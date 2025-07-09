@@ -3,7 +3,6 @@ const axios = require('axios');
 
 // 環境變數設定
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const CHANNEL_IDS = process.env.CHANNEL_IDS ? process.env.CHANNEL_IDS.split(',') : [process.env.CHANNEL_ID];
 
 // 創建Discord客戶端
 const client = new Client({
@@ -162,34 +161,25 @@ async function getBibleVerse(bookCode, chapter, verse = null, version = 'unv') {
     }
 }
 
-// 格式化經文輸出
-function formatBibleText(data, originalRef) {
+// 格式化經文輸出 - 簡化版本
+function formatBibleText(data) {
     if (!data || !data.record || data.record.length === 0) {
         return null;
     }
     
-    const versionName = data.v_name || '和合本';
-    let formattedText = '';
-    
     // 如果是多節經文
     if (data.record.length > 1) {
-        formattedText = data.record.map(verse => {
+        return data.record.map(verse => {
             return `**${verse.chineses} ${verse.chap}:${verse.sec}** ${verse.bible_text}`;
         }).join('\n\n');
     } else {
         // 單節經文
         const verse = data.record[0];
-        formattedText = `**${verse.chineses} ${verse.chap}:${verse.sec}** ${verse.bible_text}`;
+        return `**${verse.chineses} ${verse.chap}:${verse.sec}** ${verse.bible_text}`;
     }
-    
-    return {
-        text: formattedText,
-        version: versionName,
-        count: data.record.length
-    };
 }
 
-// 處理聖經查詢
+// 處理聖經查詢 - 簡化版本
 async function handleBibleQuery(message, reference) {
     try {
         const parsed = parseReference(reference);
@@ -202,26 +192,15 @@ async function handleBibleQuery(message, reference) {
         
         // 獲取經文
         const data = await getBibleVerse(parsed.book, parsed.chapter, parsed.verse);
-        const formatted = formatBibleText(data, reference);
+        const formattedText = formatBibleText(data);
         
-        if (!formatted) {
+        if (!formattedText) {
             await message.reply('❌ 找不到指定的經文，請檢查書卷名稱和章節是否正確。');
             return;
         }
         
-        // 創建嵌入式訊息
-        const embed = new EmbedBuilder()
-            .setTitle('📖 聖經經文')
-            .setDescription(formatted.text)
-            .addFields(
-                { name: '📚 版本', value: formatted.version, inline: true },
-                { name: '📊 經節數', value: `${formatted.count}節`, inline: true }
-            )
-            .setColor('#4169E1')
-            .setTimestamp()
-            .setFooter({ text: '資料來源：信望愛站' });
-        
-        await message.reply({ embeds: [embed] });
+        // 直接回覆經文文字
+        await message.reply(formattedText);
         
     } catch (error) {
         console.error('處理聖經查詢時發生錯誤:', error);
@@ -253,16 +232,12 @@ function getBooksList() {
 // Discord機器人事件
 client.once('ready', () => {
     console.log(`聖經機器人已登入: ${client.user.tag}`);
-    console.log(`支援的頻道: ${CHANNEL_IDS.join(', ')}`);
-    console.log('機器人啟動成功，所有功能已就緒！');
+    console.log('機器人啟動成功，可在任何頻道使用！');
 });
 
 // 訊息事件監聽器
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
-    
-    // 檢查是否在允許的頻道中
-    if (CHANNEL_IDS.length > 0 && !CHANNEL_IDS.includes(message.channelId)) return;
     
     const content = message.content.trim();
     
@@ -271,58 +246,36 @@ client.on('messageCreate', async (message) => {
         const command = content.slice(1).toLowerCase();
         
         if (command === 'bible' || command === 'help') {
-            const embed = new EmbedBuilder()
-                .setTitle('📖 聖經機器人使用說明')
-                .setDescription('直接輸入經文引用來查詢聖經經文')
-                .addFields(
-                    { 
-                        name: '📝 支援格式', 
-                        value: '• `太1:1` - 查詢單節\n• `馬太福音1:1` - 完整書名\n• `詩23` - 查詢整章\n• `約3:16` - 任何書卷', 
-                        inline: false 
-                    },
-                    { 
-                        name: '🔧 其他指令', 
-                        value: '• `!books` - 顯示書卷列表\n• `!test` - 測試機器人\n• `!help` - 顯示此說明', 
-                        inline: false 
-                    }
-                )
-                .setColor('#FFD700')
-                .setTimestamp();
-            
-            await message.reply({ embeds: [embed] });
+            await message.reply(`📖 **聖經機器人使用說明**
+直接輸入經文引用來查詢聖經經文
+
+**支援格式：**
+• \`太1:1\` - 查詢單節
+• \`馬太福音1:1\` - 完整書名  
+• \`詩23\` - 查詢整章
+• \`約3:16\` - 任何書卷
+
+**其他指令：**
+• \`!books\` - 顯示書卷列表
+• \`!test\` - 測試機器人
+• \`!help\` - 顯示此說明`);
             
         } else if (command === 'books') {
             const books = getBooksList();
-            const embed = new EmbedBuilder()
-                .setTitle('📚 聖經書卷列表')
-                .addFields(
-                    { name: '📜 舊約', value: books.oldTestament, inline: false },
-                    { name: '✨ 新約', value: books.newTestament, inline: false }
-                )
-                .setColor('#4169E1')
-                .setTimestamp();
-            
-            await message.reply({ embeds: [embed] });
+            await message.reply(`📚 **聖經書卷列表**
+
+**📜 舊約：** ${books.oldTestament}
+
+**✨ 新約：** ${books.newTestament}`);
             
         } else if (command === 'test') {
             await message.reply('✅ 聖經機器人正常運作中！試試輸入：太1:1');
-            
-        } else if (command.startsWith('v ')) {
-            // 處理版本指定，例如 !v cunp 太1:1
-            const parts = command.split(' ');
-            if (parts.length >= 3) {
-                const version = parts[1];
-                const reference = parts.slice(2).join(' ');
-                // 這裡可以實作不同版本的查詢
-                await message.reply('版本功能開發中，目前使用和合本。');
-            }
         }
         
         return;
     }
     
     // 檢查是否為經文引用格式
-    // 支援中文書名格式
     const bibleRefPattern = /^[\u4e00-\u9fff]+\d+(:|\：|\s*第\s*)\d+|^[\u4e00-\u9fff]+\d+$/;
     
     if (bibleRefPattern.test(content)) {
