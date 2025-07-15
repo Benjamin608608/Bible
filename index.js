@@ -144,29 +144,75 @@ async function getBibleVerse(bookName, chapter, verse = null) {
     try {
         console.log('請求IQ Bible API:', { book: bookName, chapter, verse });
         
-        const params = {
-            book: bookName,
-            chapter: chapter.toString()
-        };
+        // 嘗試不同的API端點，基於文檔中提到的端點
+        const endpoints = [
+            {
+                name: 'GetChapterByBookAndChapterId',
+                url: 'https://iq-bible.p.rapidapi.com/GetChapterByBookAndChapterId',
+                params: {
+                    bookAndChapterId: `${bookName}.${chapter}`,
+                    versionId: 'kjv' // 或其他版本
+                }
+            },
+            {
+                name: 'GetVerse', 
+                url: 'https://iq-bible.p.rapidapi.com/GetVerse',
+                params: verse ? {
+                    book: bookName,
+                    chapter: chapter.toString(),
+                    verse: verse.toString(),
+                    version: 'kjv'
+                } : {
+                    book: bookName,
+                    chapter: chapter.toString(),
+                    version: 'kjv'
+                }
+            },
+            {
+                name: 'GetChapter',
+                url: 'https://iq-bible.p.rapidapi.com/GetChapter', 
+                params: {
+                    book: bookName,
+                    chapter: chapter.toString(),
+                    version: 'kjv'
+                }
+            }
+        ];
         
-        if (verse) {
-            params.verse = verse.toString();
+        // 如果只查詢特定經節，優先使用單節API
+        const endpointsToTry = verse ? endpoints : [endpoints[0], endpoints[2]];
+        
+        for (const endpoint of endpointsToTry) {
+            try {
+                console.log(`嘗試端點: ${endpoint.name}`, endpoint.params);
+                
+                const response = await axios.get(endpoint.url, {
+                    params: endpoint.params,
+                    timeout: 15000,
+                    headers: {
+                        'X-RapidAPI-Host': 'iq-bible.p.rapidapi.com',
+                        'X-RapidAPI-Key': IQ_BIBLE_API_KEY,
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                console.log(`${endpoint.name} 回應狀態:`, response.status);
+                console.log(`${endpoint.name} 回應內容:`, JSON.stringify(response.data, null, 2));
+                
+                if (response.data && response.status === 200) {
+                    return {
+                        data: response.data,
+                        endpoint: endpoint.name
+                    };
+                }
+            } catch (endpointError) {
+                console.log(`${endpoint.name} 失敗:`, endpointError.response?.status, endpointError.message);
+                continue;
+            }
         }
         
-        const response = await axios.get('https://iq-bible.p.rapidapi.com/GetSemanticRelationsAllWords', {
-            params: params,
-            timeout: 15000,
-            headers: {
-                'X-RapidAPI-Host': 'iq-bible.p.rapidapi.com',
-                'X-RapidAPI-Key': IQ_BIBLE_API_KEY,
-                'Accept': 'application/json'
-            }
-        });
+        throw new Error('所有API端點都無法正常回應');
         
-        console.log('IQ Bible API回應狀態:', response.status);
-        console.log('IQ Bible API回應內容:', JSON.stringify(response.data, null, 2));
-        
-        return response.data;
     } catch (error) {
         console.error('獲取經文時發生錯誤:', error.message);
         if (error.response) {
@@ -238,44 +284,99 @@ async function getStrongsData(strongNumber) {
 }
 
 // 處理IQ Bible API的回應，解析經文和Strong's numbers
-function parseIQBibleResponse(data, bookName, chapter, verse) {
+function parseIQBibleResponse(apiResponse, bookName, chapter, verse) {
     try {
         console.log('開始解析IQ Bible回應...');
-        console.log('回應數據類型:', typeof data);
-        console.log('回應數據鍵值:', data ? Object.keys(data) : 'null');
+        console.log('API端點:', apiResponse.endpoint);
+        console.log('回應數據類型:', typeof apiResponse.data);
         
-        // 根據實際API回應調整解析邏輯
+        const data = apiResponse.data;
+        
         if (!data) {
             console.log('API回應為空');
             return null;
         }
         
-        // 嘗試簡單的經文文本提取
         let verseText = '';
         let strongsNumbers = [];
         
-        // 先嘗試找到經文文本，不管Strong's numbers
-        if (data.text) {
-            verseText = data.text;
-        } else if (data.verse) {
-            verseText = data.verse;
-        } else if (data.content) {
-            verseText = data.content;
-        } else if (typeof data === 'string') {
-            verseText = data;
-        } else if (data.words && Array.isArray(data.words)) {
-            // 如果是詞彙數組，只提取文本
-            verseText = data.words.map(word => word.text || word.word || '').join(' ');
-        } else {
-            // 如果都找不到，就顯示一個簡單的佔位符
-            verseText = '經文載入中...（API格式需要調整）';
-            console.log('無法找到經文文本，使用佔位符');
+        // 根據不同的API端點解析不同的數據格式
+        switch (apiResponse.endpoint) {
+            case 'GetChapterByBookAndChapterId':
+                // 處理章節API的回應
+                if (data.chapter && data.chapter.verses) {
+                    if (verse) {
+                        // 查找特定經節
+                        const targetVerse = data.chapter.verses.find(v => v.verseNumber == verse);
+                        if (targetVerse) {
+                            verseText = targetVerse.text || targetVerse.verseText || '';
+                        }
+                    } else {
+                        // 返回整章
+                        verseText = data.chapter.verses.map(v => 
+                            `${v.verseNumber}. ${v.text || v.verseText || ''}`
+                        ).join(' ');
+                    }
+                }
+                break;
+                
+            case 'GetVerse':
+                // 處理單節API的回應
+                if (data.text || data.verseText) {
+                    verseText = data.text || data.verseText;
+                } else if (data.verse) {
+                    verseText = data.verse.text || data.verse.verseText || '';
+                }
+                break;
+                
+            case 'GetChapter':
+                // 處理章節API的回應
+                if (Array.isArray(data)) {
+                    if (verse) {
+                        const targetVerse = data.find(v => v.verse == verse || v.verseNumber == verse);
+                        if (targetVerse) {
+                            verseText = targetVerse.text || targetVerse.verseText || '';
+                        }
+                    } else {
+                        verseText = data.map(v => 
+                            `${v.verse || v.verseNumber}. ${v.text || v.verseText || ''}`
+                        ).join(' ');
+                    }
+                } else if (data.verses) {
+                    // 處理有verses屬性的情況
+                    if (verse) {
+                        const targetVerse = data.verses.find(v => v.verse == verse || v.verseNumber == verse);
+                        if (targetVerse) {
+                            verseText = targetVerse.text || targetVerse.verseText || '';
+                        }
+                    } else {
+                        verseText = data.verses.map(v => 
+                            `${v.verse || v.verseNumber}. ${v.text || v.verseText || ''}`
+                        ).join(' ');
+                    }
+                }
+                break;
+                
+            default:
+                // 嘗試通用解析
+                if (data.text) {
+                    verseText = data.text;
+                } else if (data.verseText) {
+                    verseText = data.verseText;
+                } else if (typeof data === 'string') {
+                    verseText = data;
+                } else {
+                    verseText = '無法解析的經文格式';
+                }
         }
         
-        // 確保經文文本不會太長
-        if (verseText.length > 500) {
+        // 清理經文文本
+        verseText = verseText.trim();
+        
+        // 限制長度以避免Discord限制
+        if (verseText.length > 1500) {
             console.log('經文文本過長，進行截斷:', verseText.length);
-            verseText = verseText.slice(0, 500) + '...';
+            verseText = verseText.slice(0, 1500) + '...';
         }
         
         console.log('解析出的經文文本:', verseText);
@@ -286,14 +387,13 @@ function parseIQBibleResponse(data, bookName, chapter, verse) {
                 book: bookName,
                 chapter: chapter,
                 verse: verse,
-                text: verseText.trim()
+                text: verseText
             }],
             strongs: strongsNumbers // 暫時留空，專注於經文顯示
         };
     } catch (error) {
         console.error('解析IQ Bible回應時發生錯誤:', error);
         
-        // 返回一個安全的回應
         return {
             record: [{
                 book: bookName,
