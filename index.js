@@ -22,6 +22,31 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     const content = message.content.trim();
+
+    if (content === '!testapi') {
+        try {
+            const response = await axios.get('https://vibrantmiami-iq-bible-v1.p.rapidapi.com/GetVerse', {
+                params: {
+                    verseId: 'Genesis1:1',
+                    versionId: 'kjv'
+                },
+                headers: {
+                    'X-RapidAPI-Key': IQ_BIBLE_API_KEY,
+                    'X-RapidAPI-Host': 'vibrantmiami-iq-bible-v1.p.rapidapi.com'
+                }
+            });
+
+            console.log('✅ 測試成功:', response.data);
+            await message.reply(`✅ 測試成功，內容如下：\n${JSON.stringify(response.data).slice(0, 500)}...`);
+
+        } catch (err) {
+            console.error('❌ 測試失敗:', err.response?.data || err.message);
+            await message.reply(`❌ 測試失敗：${err.response?.data?.message || err.message}`);
+        }
+
+        return;
+    }
+
     if (content.match(/^([\u4e00-\u9fa5]+)(\d+):(\d+)$/)) {
         const match = content.match(/^([\u4e00-\u9fa5]+)(\d+):(\d+)$/);
         const zhBook = match[1];
