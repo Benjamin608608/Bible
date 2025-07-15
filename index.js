@@ -177,21 +177,44 @@ async function getBibleVerse(bookCode, chapter, verse = null, version = 'unv') {
 // 獲取Strong's number詳細資料
 async function getStrongsData(strongNumber) {
     try {
-        const url = 'https://bible.fhl.net/json/qb.php';
-        const params = {
-            strong: strongNumber,
-            gb: 0
-        };
-        
-        const response = await axios.get(url, { 
-            params,
-            timeout: 10000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (compatible; Bible Discord Bot)'
+        // 嘗試多種API調用方式
+        const urls = [
+            {
+                url: 'https://bible.fhl.net/json/qb.php',
+                params: {
+                    strong: strongNumber,
+                    gb: 0
+                }
+            },
+            {
+                url: 'https://bible.fhl.net/json/qb.php',
+                params: {
+                    sw: strongNumber,
+                    gb: 0
+                }
             }
-        });
+        ];
         
-        return response.data;
+        for (const config of urls) {
+            console.log('嘗試獲取Strong\'s資料:', config.url, config.params);
+            
+            const response = await axios.get(config.url, { 
+                params: config.params,
+                timeout: 10000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (compatible; Bible Discord Bot)'
+                }
+            });
+            
+            console.log('Strong\'s API回應:', JSON.stringify(response.data, null, 2));
+            
+            if (response.data && response.data.record && response.data.record.length > 0) {
+                return response.data;
+            }
+        }
+        
+        // 如果都沒有資料，返回null
+        return null;
     } catch (error) {
         console.error('獲取Strong\'s資料時發生錯誤:', error.message);
         throw error;
@@ -199,6 +222,44 @@ async function getStrongsData(strongNumber) {
 }
 
 // 解析Strong's number並添加編號
+function parseStrongsNumbers(text) {
+    if (!text) return { text: text, strongs: [] };
+    
+    // 更廣泛的匹配模式，包括所有可能的Strong's number格式
+    const strongsPattern = /<(W[A-Z]*[HG]*\w*\d+|[HG]\d+)>/g;
+    const strongs = [];
+    const strongsMap = new Map();
+    let match;
+    let counter = 1;
+    
+    console.log('原始經文文本:', text);
+    
+    // 重置正則表達式的lastIndex
+    strongsPattern.lastIndex = 0;
+    
+    // 收集所有不重複的Strong's number
+    while ((match = strongsPattern.exec(text)) !== null) {
+        const strongNumber = match[1];
+        console.log('找到Strong\'s number:', strongNumber);
+        
+        if (!strongsMap.has(strongNumber)) {
+            strongsMap.set(strongNumber, counter);
+            strongs.push({
+                number: strongNumber,
+                index: counter,
+                emoji: counter <= 10 ? NUMBER_EMOJIS[counter - 1] : EXTENDED_EMOJIS[counter - 11]
+            });
+            counter++;
+        }
+    }
+    
+    console.log('解析到的Strong\'s numbers:', strongs);
+    
+    // 替換文本中的Strong's number為上標數字
+    let processedText = text;
+    strongsMap.forEach((index, strongNumber) => {
+        // 先轉義特殊字符
+        const escapedStrongNumber = strongNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\// 解析Strong's number並添加編號
 function parseStrongsNumbers(text) {
     if (!text) return { text: text, strongs: [] };
     
@@ -242,6 +303,22 @@ function parseStrongsNumbers(text) {
         processedText = processedText.replace(regex, superscript);
         console.log('替換', '<' + strongNumber + '>', '為', superscript);
     });
+    
+    console.log('處理後的文本:', processedText);
+    
+    return { text: processedText, strongs: strongs };
+}');
+        // 創建正則表達式，匹配完整的<>格式
+        const regex = new RegExp('<' + escapedStrongNumber + '>', 'g');
+        // 轉換為上標數字（不加任何其他符號）
+        const superscript = toSuperscript(index);
+        // 執行替換
+        processedText = processedText.replace(regex, superscript);
+        console.log('替換', '<' + strongNumber + '>', '為', superscript);
+    });
+    
+    // 清理任何剩餘的括號或特殊符號
+    processedText = processedText.replace(/[{}^]/g, '');
     
     console.log('處理後的文本:', processedText);
     
@@ -479,29 +556,49 @@ client.on('messageReactionAdd', async (reaction, user) => {
         if (selectedStrong) {
             try {
                 // 獲取Strong's number詳細資料
+                console.log('查詢Strong\'s number:', selectedStrong.number);
                 const strongsData = await getStrongsData(selectedStrong.number);
                 
                 if (strongsData && strongsData.record && strongsData.record.length > 0) {
                     const strongInfo = strongsData.record[0];
+                    console.log('獲取到的Strong\'s資料:', strongInfo);
                     
                     const embed = new EmbedBuilder()
                         .setTitle(`📖 原文編號：${selectedStrong.number}`)
-                        .setColor(0x0099ff)
-                        .addFields(
-                            { name: '原文', value: strongInfo.w_text || '無資料', inline: true },
-                            { name: '音譯', value: strongInfo.w_translit || '無資料', inline: true },
-                            { name: '詞性', value: strongInfo.w_part || '無資料', inline: true },
-                            { name: '字義', value: strongInfo.w_meaning || '無資料' }
-                        )
-                        .setFooter({ text: '資料來源：信望愛聖經工具' });
+                        .setColor(0x0099ff);
+                    
+                    // 動態添加有資料的欄位
+                    if (strongInfo.w_text && strongInfo.w_text !== '無資料') {
+                        embed.addFields({ name: '原文', value: strongInfo.w_text, inline: true });
+                    }
+                    if (strongInfo.w_translit && strongInfo.w_translit !== '無資料') {
+                        embed.addFields({ name: '音譯', value: strongInfo.w_translit, inline: true });
+                    }
+                    if (strongInfo.w_part && strongInfo.w_part !== '無資料') {
+                        embed.addFields({ name: '詞性', value: strongInfo.w_part, inline: true });
+                    }
+                    if (strongInfo.w_meaning && strongInfo.w_meaning !== '無資料') {
+                        embed.addFields({ name: '字義', value: strongInfo.w_meaning });
+                    }
+                    
+                    // 如果有其他可用的欄位也添加進去
+                    if (strongInfo.w_orig && strongInfo.w_orig !== '無資料') {
+                        embed.addFields({ name: '原始形式', value: strongInfo.w_orig, inline: true });
+                    }
+                    if (strongInfo.w_src && strongInfo.w_src !== '無資料') {
+                        embed.addFields({ name: '來源', value: strongInfo.w_src, inline: true });
+                    }
+                    
+                    embed.setFooter({ text: '資料來源：信望愛聖經工具' });
                     
                     await reaction.message.reply({ embeds: [embed] });
                 } else {
-                    await reaction.message.reply(`❌ 無法獲取 ${selectedStrong.number} 的詳細資料`);
+                    console.log('未找到Strong\'s資料或資料為空');
+                    await reaction.message.reply(`❌ 無法獲取 ${selectedStrong.number} 的詳細資料，可能該編號暫無資料`);
                 }
             } catch (error) {
                 console.error('獲取Strong\'s資料時發生錯誤:', error);
-                await reaction.message.reply(`❌ 查詢 ${selectedStrong.number} 時發生錯誤`);
+                await reaction.message.reply(`❌ 查詢 ${selectedStrong.number} 時發生錯誤：${error.message}`);
             }
         }
     }
