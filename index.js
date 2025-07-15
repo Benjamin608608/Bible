@@ -144,45 +144,65 @@ async function getBibleVerse(bookName, chapter, verse = null) {
     try {
         console.log('請求IQ Bible API:', { book: bookName, chapter, verse });
         
-        // 嘗試不同的API端點，基於文檔中提到的端點
+        // 嘗試不同的API端點和參數格式
         const endpoints = [
+            // 嘗試簡單的GetVerse端點
             {
-                name: 'GetChapterByBookAndChapterId',
-                url: 'https://iq-bible.p.rapidapi.com/GetChapterByBookAndChapterId',
-                params: {
-                    bookAndChapterId: `${bookName}.${chapter}`,
-                    versionId: 'kjv' // 或其他版本
-                }
-            },
-            {
-                name: 'GetVerse', 
+                name: 'GetVerse',
                 url: 'https://iq-bible.p.rapidapi.com/GetVerse',
-                params: verse ? {
-                    book: bookName,
-                    chapter: chapter.toString(),
-                    verse: verse.toString(),
-                    version: 'kjv'
-                } : {
-                    book: bookName,
-                    chapter: chapter.toString(),
-                    version: 'kjv'
+                params: {
+                    verseId: `${bookName}${chapter}:${verse || 1}`,
+                    versionId: 'kjv'
                 }
             },
+            // 嘗試另一種verseId格式
+            {
+                name: 'GetVerse_format2',
+                url: 'https://iq-bible.p.rapidapi.com/GetVerse',
+                params: {
+                    verseId: `${bookName}.${chapter}.${verse || 1}`,
+                    versionId: 'kjv'
+                }
+            },
+            // 嘗試數字格式的book
+            {
+                name: 'GetVerse_numeric',
+                url: 'https://iq-bible.p.rapidapi.com/GetVerse',
+                params: {
+                    verseId: `1.${chapter}.${verse || 1}`, // Genesis = 1
+                    versionId: 'kjv'
+                }
+            },
+            // 嘗試GetChapter
             {
                 name: 'GetChapter',
-                url: 'https://iq-bible.p.rapidapi.com/GetChapter', 
+                url: 'https://iq-bible.p.rapidapi.com/GetChapter',
                 params: {
-                    book: bookName,
-                    chapter: chapter.toString(),
-                    version: 'kjv'
+                    chapterId: `${bookName}${chapter}`,
+                    versionId: 'kjv'
+                }
+            },
+            // 嘗試不同的Chapter格式
+            {
+                name: 'GetChapter_format2',
+                url: 'https://iq-bible.p.rapidapi.com/GetChapter',
+                params: {
+                    chapterId: `${bookName}.${chapter}`,
+                    versionId: 'kjv'
+                }
+            },
+            // 嘗試數字格式
+            {
+                name: 'GetChapter_numeric',
+                url: 'https://iq-bible.p.rapidapi.com/GetChapter',
+                params: {
+                    chapterId: `1.${chapter}`, // Genesis = 1
+                    versionId: 'kjv'
                 }
             }
         ];
         
-        // 如果只查詢特定經節，優先使用單節API
-        const endpointsToTry = verse ? endpoints : [endpoints[0], endpoints[2]];
-        
-        for (const endpoint of endpointsToTry) {
+        for (const endpoint of endpoints) {
             try {
                 console.log(`嘗試端點: ${endpoint.name}`, endpoint.params);
                 
@@ -199,7 +219,10 @@ async function getBibleVerse(bookName, chapter, verse = null) {
                 console.log(`${endpoint.name} 回應狀態:`, response.status);
                 console.log(`${endpoint.name} 回應內容:`, JSON.stringify(response.data, null, 2));
                 
-                if (response.data && response.status === 200) {
+                // 檢查是否有有效數據
+                if (response.data && response.status === 200 && 
+                    (Array.isArray(response.data) ? response.data.length > 0 : 
+                     Object.keys(response.data).length > 0)) {
                     return {
                         data: response.data,
                         endpoint: endpoint.name
@@ -211,7 +234,7 @@ async function getBibleVerse(bookName, chapter, verse = null) {
             }
         }
         
-        throw new Error('所有API端點都無法正常回應');
+        throw new Error('所有API端點都返回空數據或失敗');
         
     } catch (error) {
         console.error('獲取經文時發生錯誤:', error.message);
