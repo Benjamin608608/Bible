@@ -241,49 +241,45 @@ async function getStrongsData(strongNumber) {
 function parseIQBibleResponse(data, bookName, chapter, verse) {
     try {
         console.log('開始解析IQ Bible回應...');
+        console.log('回應數據類型:', typeof data);
+        console.log('回應數據鍵值:', data ? Object.keys(data) : 'null');
         
         // 根據實際API回應調整解析邏輯
         if (!data) {
+            console.log('API回應為空');
             return null;
         }
         
-        // 假設API返回的數據結構，需要根據實際回應調整
+        // 嘗試簡單的經文文本提取
         let verseText = '';
         let strongsNumbers = [];
         
-        // 嘗試不同的可能數據結構
-        if (data.words && Array.isArray(data.words)) {
-            // 如果返回詞彙數組
-            data.words.forEach((word, index) => {
-                verseText += word.text || word.word || '';
-                if (word.strong || word.strongsNumber) {
-                    strongsNumbers.push({
-                        number: word.strong || word.strongsNumber,
-                        index: index + 1,
-                        emoji: index < 10 ? NUMBER_EMOJIS[index] : EXTENDED_EMOJIS[index - 10]
-                    });
-                    verseText += ' ' + toSuperscript(index + 1);
-                }
-                verseText += ' ';
-            });
-        } else if (data.text || data.verse) {
-            // 如果返回完整經文文本
-            verseText = data.text || data.verse;
-            
-            // 嘗試提取Strong's numbers（如果有的話）
-            if (data.strongs && Array.isArray(data.strongs)) {
-                data.strongs.forEach((strong, index) => {
-                    strongsNumbers.push({
-                        number: strong,
-                        index: index + 1,
-                        emoji: index < 10 ? NUMBER_EMOJIS[index] : EXTENDED_EMOJIS[index - 10]
-                    });
-                });
-            }
+        // 先嘗試找到經文文本，不管Strong's numbers
+        if (data.text) {
+            verseText = data.text;
+        } else if (data.verse) {
+            verseText = data.verse;
+        } else if (data.content) {
+            verseText = data.content;
+        } else if (typeof data === 'string') {
+            verseText = data;
+        } else if (data.words && Array.isArray(data.words)) {
+            // 如果是詞彙數組，只提取文本
+            verseText = data.words.map(word => word.text || word.word || '').join(' ');
         } else {
-            // 如果是其他格式，嘗試直接使用
-            verseText = JSON.stringify(data);
+            // 如果都找不到，就顯示一個簡單的佔位符
+            verseText = '經文載入中...（API格式需要調整）';
+            console.log('無法找到經文文本，使用佔位符');
         }
+        
+        // 確保經文文本不會太長
+        if (verseText.length > 500) {
+            console.log('經文文本過長，進行截斷:', verseText.length);
+            verseText = verseText.slice(0, 500) + '...';
+        }
+        
+        console.log('解析出的經文文本:', verseText);
+        console.log('經文文本長度:', verseText.length);
         
         return {
             record: [{
@@ -292,11 +288,21 @@ function parseIQBibleResponse(data, bookName, chapter, verse) {
                 verse: verse,
                 text: verseText.trim()
             }],
-            strongs: strongsNumbers
+            strongs: strongsNumbers // 暫時留空，專注於經文顯示
         };
     } catch (error) {
         console.error('解析IQ Bible回應時發生錯誤:', error);
-        return null;
+        
+        // 返回一個安全的回應
+        return {
+            record: [{
+                book: bookName,
+                chapter: chapter,  
+                verse: verse,
+                text: '解析失敗，請稍後再試'
+            }],
+            strongs: []
+        };
     }
 }
 
@@ -322,6 +328,11 @@ async function handleBibleQuery(message, reference) {
         const record = formatted.record[0];
         let responseText = `**${record.book} ${record.chapter}${record.verse ? ':' + record.verse : ''}** ${record.text}`;
         
+        // 確保訊息長度不超過Discord限制
+        if (responseText.length > 1800) {
+            responseText = responseText.slice(0, 1800) + '...\n\n*(經文內容過長，已截斷)*';
+        }
+        
         const sentMessage = await message.reply(responseText);
         console.log('訊息已發送，ID:', sentMessage.id);
         
@@ -330,7 +341,11 @@ async function handleBibleQuery(message, reference) {
             console.log('開始添加表情符號反應...');
             messageStrongsMap.set(sentMessage.id, formatted.strongs);
             
-            for (const strong of formatted.strongs) {
+            // 限制表情符號數量，避免過多
+            const maxEmojis = Math.min(formatted.strongs.length, 20);
+            
+            for (let i = 0; i < maxEmojis; i++) {
+                const strong = formatted.strongs[i];
                 try {
                     console.log(`添加表情符號: ${strong.emoji} for ${strong.number}`);
                     await sentMessage.react(strong.emoji);
@@ -349,7 +364,21 @@ async function handleBibleQuery(message, reference) {
         
     } catch (error) {
         console.error('處理聖經查詢時發生錯誤:', error);
-        await message.reply('❌ 查詢經文時發生錯誤，請稍後再試。\n\n錯誤詳情: ' + error.message);
+        
+        // 根據不同錯誤類型提供不同的回應
+        let errorMessage = '❌ 查詢經文時發生錯誤';
+        
+        if (error.message.includes('4000 or fewer in length')) {
+            errorMessage = '❌ 查詢結果過長，正在優化顯示格式，請稍後再試';
+        } else if (error.message.includes('404')) {
+            errorMessage = '❌ 找不到指定的經文，請檢查書卷名稱和章節';
+        } else if (error.message.includes('timeout')) {
+            errorMessage = '❌ API請求超時，請稍後再試';
+        } else {
+            errorMessage += `\n\n錯誤類型: ${error.name || 'Unknown'}`;
+        }
+        
+        await message.reply(errorMessage);
     }
 }
 
