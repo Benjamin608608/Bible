@@ -18,6 +18,17 @@ const client = new Client({
 const NUMBER_EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
 const EXTENDED_EMOJIS = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯', '🇰', '🇱', '🇲', '🇳', '🇴', '🇵', '🇶', '🇷', '🇸', '🇹'];
 
+// Unicode上標數字映射
+const SUPERSCRIPT_NUMBERS = {
+    '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵',
+    '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '0': '⁰'
+};
+
+// 將數字轉換為上標
+function toSuperscript(number) {
+    return number.toString().split('').map(digit => SUPERSCRIPT_NUMBERS[digit] || digit).join('');
+}
+
 // 儲存訊息的Strong's number映射
 const messageStrongsMap = new Map();
 
@@ -187,17 +198,6 @@ async function getStrongsData(strongNumber) {
     }
 }
 
-// Unicode上標數字映射
-const SUPERSCRIPT_NUMBERS = {
-    '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵',
-    '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '0': '⁰'
-};
-
-// 將數字轉換為上標
-function toSuperscript(number) {
-    return number.toString().split('').map(digit => SUPERSCRIPT_NUMBERS[digit] || digit).join('');
-}
-
 // 解析Strong's number並添加編號
 function parseStrongsNumbers(text) {
     if (!text) return { text: text, strongs: [] };
@@ -205,7 +205,7 @@ function parseStrongsNumbers(text) {
     // 匹配各種可能的Strong's number格式
     const strongsPattern = /<(WH\w+|[HG]\d+)>/g;
     const strongs = [];
-    const strongsMap = new Map(); // 用於追蹤已分配的編號
+    const strongsMap = new Map();
     let match;
     let counter = 1;
     
@@ -232,40 +232,15 @@ function parseStrongsNumbers(text) {
     // 替換文本中的Strong's number為上標數字
     let processedText = text;
     strongsMap.forEach((index, strongNumber) => {
-        const regex = new RegExp(`<${strongNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\// 解析Strong's number並添加編號
-function parseStrongsNumbers(text) {
-    if (!text) return { text: text, strongs: [] };
-    
-    const strongsPattern = /<([HG]\d+)>/g;
-    const strongs = [];
-    let match;
-    let counter = 1;
-    
-    // 收集所有Strong's number
-    while ((match = strongsPattern.exec(text)) !== null) {
-        const strongNumber = match[1];
-        if (!strongs.find(s => s.number === strongNumber)) {
-            strongs.push({
-                number: strongNumber,
-                index: counter,
-                emoji: counter <= 10 ? NUMBER_EMOJIS[counter - 1] : EXTENDED_EMOJIS[counter - 11]
-            });
-            counter++;
-        }
-    }
-    
-    // 替換文本中的Strong's number為編號
-    let processedText = text;
-    strongs.forEach(strong => {
-        const regex = new RegExp(`<${strong.number}>`, 'g');
-        processedText = processedText.replace(regex, `^${strong.index}^`);
-    });
-    
-    return { text: processedText, strongs: strongs };
-}')}>`, 'g');
+        // 先轉義特殊字符
+        const escapedStrongNumber = strongNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // 創建正則表達式
+        const regex = new RegExp('<' + escapedStrongNumber + '>', 'g');
+        // 轉換為上標數字
         const superscript = toSuperscript(index);
+        // 執行替換
         processedText = processedText.replace(regex, superscript);
-        console.log(`替換 <${strongNumber}> 為 ${superscript}`);
+        console.log('替換', '<' + strongNumber + '>', '為', superscript);
     });
     
     console.log('處理後的文本:', processedText);
@@ -280,7 +255,6 @@ function formatBibleText(data) {
     }
     
     let allStrongs = [];
-    let strongsMap = new Map(); // 用於去重和統一編號
     let formattedText = '';
     
     console.log('開始格式化經文，記錄數量:', data.record.length);
@@ -306,45 +280,8 @@ function formatBibleText(data) {
             
             // 使用全局編號映射替換
             globalStrongsMap.forEach((index, strongNumber) => {
-                const regex = new RegExp(`<${strongNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\// 格式化經文輸出（包含Strong's number）
-function formatBibleText(data) {
-    if (!data || !data.record || data.record.length === 0) {
-        return null;
-    }
-    
-    let allStrongs = [];
-    let formattedText = '';
-    
-    if (data.record.length > 1) {
-        // 多節經文
-        data.record.forEach(verse => {
-            const parsed = parseStrongsNumbers(verse.bible_text);
-            formattedText += `**${verse.chineses} ${verse.chap}:${verse.sec}** ${parsed.text}\n\n`;
-            allStrongs = allStrongs.concat(parsed.strongs);
-        });
-    } else {
-        // 單節經文
-        const verse = data.record[0];
-        const parsed = parseStrongsNumbers(verse.bible_text);
-        formattedText = `**${verse.chineses} ${verse.chap}:${verse.sec}** ${parsed.text}`;
-        allStrongs = parsed.strongs;
-    }
-    
-    // 去除重複的Strong's number
-    const uniqueStrongs = [];
-    const seen = new Set();
-    allStrongs.forEach(strong => {
-        if (!seen.has(strong.number)) {
-            seen.add(strong.number);
-            uniqueStrongs.push(strong);
-        }
-    });
-    
-    return {
-        text: formattedText,
-        strongs: uniqueStrongs
-    };
-}')}>`, 'g');
+                const escapedStrongNumber = strongNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp('<' + escapedStrongNumber + '>', 'g');
                 const superscript = toSuperscript(index);
                 processedVerseText = processedVerseText.replace(regex, superscript);
             });
