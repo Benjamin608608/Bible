@@ -453,6 +453,41 @@ client.on('messageCreate', async (message) => {
             
         } else if (command === 'test') {
             await message.reply('✅ 聖經機器人正常運作中！試試輸入：太1:1');
+        } else if (command === 'teststrong') {
+            // 測試Strong's number API回應
+            try {
+                console.log('測試Strong\'s number API...');
+                
+                // 測試幾個不同的Strong's number
+                const testNumbers = ['WHO9002', 'WTH8804', 'WHO7225', 'H430', 'G2316'];
+                let testResults = '🔍 **Strong\'s Number API 測試結果：**\n\n';
+                
+                for (const strongNumber of testNumbers) {
+                    try {
+                        const data = await getStrongsData(strongNumber);
+                        if (data && data.record && data.record.length > 0) {
+                            const record = data.record[0];
+                            testResults += `**${strongNumber}:**\n`;
+                            
+                            // 顯示所有可用的欄位
+                            Object.keys(record).forEach(key => {
+                                if (record[key]) {
+                                    testResults += `• ${key}: ${record[key]}\n`;
+                                }
+                            });
+                            testResults += '\n';
+                        } else {
+                            testResults += `**${strongNumber}:** 無資料\n\n`;
+                        }
+                    } catch (error) {
+                        testResults += `**${strongNumber}:** 錯誤 - ${error.message}\n\n`;
+                    }
+                }
+                
+                await message.reply(testResults);
+            } catch (error) {
+                await message.reply(`❌ 測試失敗：${error.message}`);
+            }
         }
         
         return;
