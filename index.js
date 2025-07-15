@@ -426,7 +426,19 @@ async function handleBibleQuery(message, reference) {
         }
         
         const record = formatted.record[0];
-        let responseText = `**${record.book} ${record.chapter}${record.verse ? ':' + record.verse : ''}** ${record.text}`;
+        let responseText = `**${parsed.bookName} ${record.chapter}${record.verse ? ':' + record.verse : ''}**`;
+        
+        // 检查是否有经文内容
+        if (record.text && record.text.trim() && record.text !== '解析失敗，請稍後再試') {
+            responseText += ` ${record.text}`;
+        } else {
+            responseText += ` ⚠️ 经文内容获取失败，请检查API回应`;
+            console.log('经文内容为空或无效:', record.text);
+        }
+        
+        // 显示调试信息（临时）
+        console.log('最终回应文本:', responseText);
+        console.log('回应文本长度:', responseText.length);
         
         // 確保訊息長度不超過Discord限制
         if (responseText.length > 1800) {
