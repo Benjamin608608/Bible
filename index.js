@@ -182,41 +182,86 @@ async function getBibleVerse(bookCode, chapter, verse = null, version = 'unv') {
 // 獲取Strong's number詳細資料
 async function getStrongsData(strongNumber) {
     try {
-        // 嘗試多種不同的API參數組合
-        const apiConfigs = [
-            {
-                url: 'https://bible.fhl.net/json/qb.php',
-                params: {
-                    sw: strongNumber,
-                    gb: 0
+        console.log('查詢Strong\'s number:', strongNumber);
+        
+        // 判斷是希伯來文還是希臘文
+        const isHebrew = strongNumber.startsWith('WH') || strongNumber.startsWith('H');
+        const isGreek = strongNumber.startsWith('WG') || strongNumber.startsWith('G');
+        
+        // 提取數字部分
+        let numberPart = strongNumber.replace(/^(WH|WG|H|G|WHO|WTH|WHE)/, '');
+        
+        // 嘗試不同的API配置
+        const apiConfigs = [];
+        
+        if (isHebrew || strongNumber.startsWith('WH') || strongNumber.startsWith('WHO')) {
+            // 希伯來文字典API
+            apiConfigs.push(
+                {
+                    url: 'https://bible.fhl.net/json/hb.php',
+                    params: {
+                        k: numberPart,
+                        gb: 0
+                    },
+                    description: '希伯來文字典'
+                },
+                {
+                    url: 'https://bible.fhl.net/json/hb.php',
+                    params: {
+                        k: strongNumber,
+                        gb: 0
+                    },
+                    description: '希伯來文字典(完整編號)'
                 }
+            );
+        }
+        
+        if (isGreek || strongNumber.startsWith('WG') || strongNumber.startsWith('WTH')) {
+            // 希臘文字典API
+            apiConfigs.push(
+                {
+                    url: 'https://bible.fhl.net/json/sw.php',
+                    params: {
+                        k: numberPart,
+                        gb: 0
+                    },
+                    description: '希臘文字典'
+                },
+                {
+                    url: 'https://bible.fhl.net/json/sw.php',
+                    params: {
+                        k: strongNumber,
+                        gb: 0
+                    },
+                    description: '希臘文字典(完整編號)'
+                }
+            );
+        }
+        
+        // 通用原文字典API
+        apiConfigs.push(
+            {
+                url: 'https://bible.fhl.net/json/dic.php',
+                params: {
+                    N: isHebrew ? 1 : 0,  // 0:新約(希臘文) 1:舊約(希伯來文)
+                    k: numberPart,
+                    gb: 0
+                },
+                description: '原文字典'
             },
             {
-                url: 'https://bible.fhl.net/json/qb.php',
+                url: 'https://bible.fhl.net/json/dic.php',
                 params: {
-                    strong: strongNumber,
+                    N: isHebrew ? 1 : 0,
+                    k: strongNumber,
                     gb: 0
-                }
-            },
-            {
-                url: 'https://bible.fhl.net/json/qb.php',
-                params: {
-                    sw: strongNumber,
-                    gb: 0,
-                    op: 'sw'
-                }
-            },
-            {
-                url: 'https://bible.fhl.net/json/qb.php',
-                params: {
-                    chineses: strongNumber,
-                    gb: 0
-                }
+                },
+                description: '原文字典(完整編號)'
             }
-        ];
+        );
         
         for (const config of apiConfigs) {
-            console.log('嘗試獲取Strong\'s資料:', config.url, 'params:', config.params);
+            console.log(`嘗試 ${config.description}:`, config.url, 'params:', config.params);
             
             try {
                 const response = await axios.get(config.url, { 
@@ -228,19 +273,19 @@ async function getStrongsData(strongNumber) {
                     }
                 });
                 
-                console.log(`API回應 (${JSON.stringify(config.params)}):`, JSON.stringify(response.data, null, 2));
+                console.log(`${config.description} 回應:`, JSON.stringify(response.data, null, 2));
                 
                 if (response.data && response.data.record && response.data.record.length > 0) {
-                    console.log('找到資料，使用此配置');
+                    console.log(`在 ${config.description} 找到資料!`);
                     return response.data;
                 }
             } catch (apiError) {
-                console.log(`API配置失敗 (${JSON.stringify(config.params)}):`, apiError.message);
+                console.log(`${config.description} 失敗:`, apiError.message);
                 continue;
             }
         }
         
-        console.log('所有API配置都未返回資料');
+        console.log('所有API端點都未返回資料');
         return null;
     } catch (error) {
         console.error('獲取Strong\'s資料時發生錯誤:', error.message);
@@ -560,56 +605,68 @@ client.on('messageReactionAdd', async (reaction, user) => {
                     
                     let hasContent = false;
                     
-                    // 原文字典 - 原文意義
-                    if (strongInfo.w_text) {
-                        embed.addFields({ 
-                            name: '📜 原文', 
-                            value: strongInfo.w_text, 
-                            inline: true 
-                        });
-                        hasContent = true;
-                    }
+                    // 根據API文檔，嘗試不同的欄位名稱
                     
-                    // 音譯
-                    if (strongInfo.w_translit) {
-                        embed.addFields({ 
-                            name: '🔤 音譯', 
-                            value: strongInfo.w_translit, 
-                            inline: true 
-                        });
-                        hasContent = true;
-                    }
-                    
-                    // 詞性分析 - 語法信息
-                    if (strongInfo.w_part) {
-                        embed.addFields({ 
-                            name: '📝 詞性', 
-                            value: strongInfo.w_part, 
-                            inline: true 
-                        });
-                        hasContent = true;
-                    }
-                    
-                    // 字義解釋 - 中文含義
-                    if (strongInfo.w_meaning) {
-                        embed.addFields({ 
-                            name: '💭 字義解釋', 
-                            value: strongInfo.w_meaning 
-                        });
-                        hasContent = true;
-                    }
-                    
-                    // 檢查其他可能的欄位名稱
-                    const otherFields = ['meaning', 'definition', 'chinese', 'explanation', 'interpret'];
-                    otherFields.forEach(field => {
+                    // 原文 - 可能的欄位名稱
+                    const originalTextFields = ['orig', 'word', 'sn', 'dic_text'];
+                    for (const field of originalTextFields) {
                         if (strongInfo[field] && !hasContent) {
                             embed.addFields({ 
-                                name: '💭 含義', 
-                                value: strongInfo[field] 
+                                name: '📜 原文', 
+                                value: strongInfo[field], 
+                                inline: true 
                             });
                             hasContent = true;
+                            break;
                         }
-                    });
+                    }
+                    
+                    // 中文解釋/字義 - 可能的欄位名稱
+                    const meaningFields = ['cexp', 'exp', 'dic_text', 'edic_text'];
+                    for (const field of meaningFields) {
+                        if (strongInfo[field] && strongInfo[field] !== strongInfo.orig) {
+                            embed.addFields({ 
+                                name: '💭 字義解釋', 
+                                value: strongInfo[field].slice(0, 1024) // Discord限制
+                            });
+                            hasContent = true;
+                            break;
+                        }
+                    }
+                    
+                    // 詞性 - 可能的欄位名稱
+                    const partOfSpeechFields = ['pro', 'wform', 'part'];
+                    for (const field of partOfSpeechFields) {
+                        if (strongInfo[field]) {
+                            embed.addFields({ 
+                                name: '📝 詞性', 
+                                value: strongInfo[field], 
+                                inline: true 
+                            });
+                            hasContent = true;
+                            break;
+                        }
+                    }
+                    
+                    // 出現次數
+                    if (strongInfo.ccnt) {
+                        embed.addFields({ 
+                            name: '📊 出現次數', 
+                            value: strongInfo.ccnt + ' 次', 
+                            inline: true 
+                        });
+                        hasContent = true;
+                    }
+                    
+                    // 同源字
+                    if (strongInfo.same) {
+                        embed.addFields({ 
+                            name: '🔗 同源字', 
+                            value: strongInfo.same, 
+                            inline: true 
+                        });
+                        hasContent = true;
+                    }
                     
                     // 如果還是沒有內容，顯示所有非空欄位
                     if (!hasContent) {
@@ -617,8 +674,8 @@ client.on('messageReactionAdd', async (reaction, user) => {
                         Object.keys(strongInfo).forEach(key => {
                             if (strongInfo[key] && typeof strongInfo[key] === 'string' && strongInfo[key].trim() !== '') {
                                 embed.addFields({ 
-                                    name: key, 
-                                    value: strongInfo[key].slice(0, 1024), // Discord 欄位值限制
+                                    name: `📋 ${key}`, 
+                                    value: strongInfo[key].slice(0, 1024),
                                     inline: true 
                                 });
                                 hasContent = true;
@@ -630,7 +687,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
                     if (!hasContent) {
                         embed.addFields({ 
                             name: '⚠️ 資料狀態', 
-                            value: '此編號的詳細資料暫時無法取得' 
+                            value: '此編號的詳細資料暫時無法取得，但編號已被識別' 
                         });
                     }
                     
@@ -639,21 +696,23 @@ client.on('messageReactionAdd', async (reaction, user) => {
                     await reaction.message.reply({ embeds: [embed] });
                 } else {
                     console.log('未找到Strong\'s資料或資料為空');
-                    // 提供更詳細的錯誤信息
+                    // 提供更詳細的錯誤信息和建議
                     await reaction.message.reply(`❌ 無法獲取 ${selectedStrong.number} 的詳細資料
-                    
-可能原因：
-• 該編號在API中暫無詳細資料
-• 編號格式可能需要轉換 (${selectedStrong.number} → 其他格式)
-• API暫時無法提供此編號的字典資料
 
-建議：可嘗試在信望愛網站直接查詢此編號`);
+**可能原因：**
+• 此編號格式 (${selectedStrong.number}) 可能是信望愛專用格式
+• 字典API中可能沒有此特定編號的資料
+• 需要轉換為標準Strong's格式 (H/G + 數字)
+
+**建議：**
+• 嘗試在信望愛網站直接查詢: https://bible.fhl.net
+• 此編號在經文中仍可正確標示原文位置`);
                 }
             } catch (error) {
                 console.error('獲取Strong\'s資料時發生錯誤:', error);
                 await reaction.message.reply(`❌ 查詢 ${selectedStrong.number} 時發生錯誤：${error.message}
-                
-這可能是暫時的網路問題，請稍後再試。`);
+
+這可能是網路問題或API暫時無法使用，請稍後再試。`);
             }
         }
     }
