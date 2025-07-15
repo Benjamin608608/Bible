@@ -105,6 +105,11 @@ const BIBLE_BOOKS = {
     '啟示錄': '啟', '啟': '啟'
 };
 
+// 轉義正則表達式特殊字符的函數
+function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // 解析經文引用格式
 function parseReference(input) {
     const cleanInput = input.replace(/\s/g, '');
@@ -146,7 +151,7 @@ async function getBibleVerse(bookCode, chapter, verse = null, version = 'unv') {
             chap: chapter,
             version: version,
             gb: 0,
-            strong: 1  // 啟用Strong's number
+            strong: 1
         };
         
         if (verse) {
@@ -177,7 +182,6 @@ async function getBibleVerse(bookCode, chapter, verse = null, version = 'unv') {
 // 獲取Strong's number詳細資料
 async function getStrongsData(strongNumber) {
     try {
-        // 嘗試多種API調用方式
         const urls = [
             {
                 url: 'https://bible.fhl.net/json/qb.php',
@@ -213,7 +217,6 @@ async function getStrongsData(strongNumber) {
             }
         }
         
-        // 如果都沒有資料，返回null
         return null;
     } catch (error) {
         console.error('獲取Strong\'s資料時發生錯誤:', error.message);
@@ -225,54 +228,18 @@ async function getStrongsData(strongNumber) {
 function parseStrongsNumbers(text) {
     if (!text) return { text: text, strongs: [] };
     
-    // 更廣泛的匹配模式，包括所有可能的Strong's number格式
-    const strongsPattern = /<(W[A-Z]*[HG]*\w*\d+|[HG]\d+)>/g;
-    const strongs = [];
-    const strongsMap = new Map();
-    let match;
-    let counter = 1;
-    
     console.log('原始經文文本:', text);
     
-    // 重置正則表達式的lastIndex
+    // 更廣泛的匹配模式
+    const strongsPattern = /<([A-Z]*\w*\d+)>/g;
+    const strongs = [];
+    const strongsMap = new Map();
+    let counter = 1;
+    
+    // 重置正則表達式
     strongsPattern.lastIndex = 0;
     
-    // 收集所有不重複的Strong's number
-    while ((match = strongsPattern.exec(text)) !== null) {
-        const strongNumber = match[1];
-        console.log('找到Strong\'s number:', strongNumber);
-        
-        if (!strongsMap.has(strongNumber)) {
-            strongsMap.set(strongNumber, counter);
-            strongs.push({
-                number: strongNumber,
-                index: counter,
-                emoji: counter <= 10 ? NUMBER_EMOJIS[counter - 1] : EXTENDED_EMOJIS[counter - 11]
-            });
-            counter++;
-        }
-    }
-    
-    console.log('解析到的Strong\'s numbers:', strongs);
-    
-    // 替換文本中的Strong's number為上標數字
-    let processedText = text;
-    strongsMap.forEach((index, strongNumber) => {
-        // 先轉義特殊字符
-        const escapedStrongNumber = strongNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\// 解析Strong's number並添加編號
-function parseStrongsNumbers(text) {
-    if (!text) return { text: text, strongs: [] };
-    
-    // 匹配各種可能的Strong's number格式
-    const strongsPattern = /<(WH\w+|[HG]\d+)>/g;
-    const strongs = [];
-    const strongsMap = new Map();
     let match;
-    let counter = 1;
-    
-    console.log('原始經文文本:', text);
-    
-    // 收集所有不重複的Strong's number
     while ((match = strongsPattern.exec(text)) !== null) {
         const strongNumber = match[1];
         console.log('找到Strong\'s number:', strongNumber);
@@ -292,32 +259,18 @@ function parseStrongsNumbers(text) {
     
     // 替換文本中的Strong's number為上標數字
     let processedText = text;
-    strongsMap.forEach((index, strongNumber) => {
-        // 先轉義特殊字符
-        const escapedStrongNumber = strongNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        // 創建正則表達式
-        const regex = new RegExp('<' + escapedStrongNumber + '>', 'g');
-        // 轉換為上標數字
+    
+    for (const [strongNumber, index] of strongsMap) {
+        const escapedNumber = escapeRegExp(strongNumber);
+        const pattern = '<' + escapedNumber + '>';
+        const regex = new RegExp(pattern, 'g');
         const superscript = toSuperscript(index);
-        // 執行替換
+        
         processedText = processedText.replace(regex, superscript);
-        console.log('替換', '<' + strongNumber + '>', '為', superscript);
-    });
+        console.log('替換', pattern, '為', superscript);
+    }
     
-    console.log('處理後的文本:', processedText);
-    
-    return { text: processedText, strongs: strongs };
-}');
-        // 創建正則表達式，匹配完整的<>格式
-        const regex = new RegExp('<' + escapedStrongNumber + '>', 'g');
-        // 轉換為上標數字（不加任何其他符號）
-        const superscript = toSuperscript(index);
-        // 執行替換
-        processedText = processedText.replace(regex, superscript);
-        console.log('替換', '<' + strongNumber + '>', '為', superscript);
-    });
-    
-    // 清理任何剩餘的括號或特殊符號
+    // 清理剩餘的特殊符號
     processedText = processedText.replace(/[{}^]/g, '');
     
     console.log('處理後的文本:', processedText);
@@ -337,32 +290,32 @@ function formatBibleText(data) {
     console.log('開始格式化經文，記錄數量:', data.record.length);
     
     if (data.record.length > 1) {
-        // 多節經文 - 先收集所有Strong's number建立統一編號
+        // 多節經文
         let allText = '';
         data.record.forEach(verse => {
             allText += verse.bible_text + ' ';
         });
         
-        // 解析所有Strong's number並建立編號映射
         const globalParsed = parseStrongsNumbers(allText);
         const globalStrongsMap = new Map();
         globalParsed.strongs.forEach(strong => {
             globalStrongsMap.set(strong.number, strong.index);
         });
         
-        // 現在處理每一節，使用統一的編號
         data.record.forEach(verse => {
             const verseText = verse.bible_text;
             let processedVerseText = verseText;
             
-            // 使用全局編號映射替換
-            globalStrongsMap.forEach((index, strongNumber) => {
-                const escapedStrongNumber = strongNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const regex = new RegExp('<' + escapedStrongNumber + '>', 'g');
+            for (const [strongNumber, index] of globalStrongsMap) {
+                const escapedNumber = escapeRegExp(strongNumber);
+                const pattern = '<' + escapedNumber + '>';
+                const regex = new RegExp(pattern, 'g');
                 const superscript = toSuperscript(index);
+                
                 processedVerseText = processedVerseText.replace(regex, superscript);
-            });
+            }
             
+            processedVerseText = processedVerseText.replace(/[{}^]/g, '');
             formattedText += `**${verse.chineses} ${verse.chap}:${verse.sec}** ${processedVerseText}\n\n`;
         });
         
@@ -395,7 +348,6 @@ async function handleBibleQuery(message, reference) {
         
         console.log('解析結果:', parsed);
         
-        // 獲取經文
         const data = await getBibleVerse(parsed.book, parsed.chapter, parsed.verse);
         const formatted = formatBibleText(data);
         
@@ -404,10 +356,8 @@ async function handleBibleQuery(message, reference) {
             return;
         }
         
-        // 發送經文
         let responseText = formatted.text;
         
-        // 如果有Strong's number，添加說明
         if (formatted.strongs.length > 0) {
             responseText += '\n\n📖 **原文編號說明：**\n';
             responseText += '點擊下方表情符號查看原文詳細資料\n';
@@ -422,12 +372,10 @@ async function handleBibleQuery(message, reference) {
         const sentMessage = await message.reply(responseText);
         console.log('訊息已發送，ID:', sentMessage.id);
         
-        // 如果有Strong's number，添加表情符號反應並儲存映射
         if (formatted.strongs.length > 0) {
             console.log('開始添加表情符號反應...');
             messageStrongsMap.set(sentMessage.id, formatted.strongs);
             
-            // 添加表情符號
             for (const strong of formatted.strongs) {
                 try {
                     console.log(`添加表情符號: ${strong.emoji} for ${strong.number}`);
@@ -439,11 +387,10 @@ async function handleBibleQuery(message, reference) {
             
             console.log('所有表情符號添加完成');
             
-            // 設置5分鐘後清理映射
             setTimeout(() => {
                 messageStrongsMap.delete(sentMessage.id);
                 console.log(`清理訊息 ${sentMessage.id} 的映射`);
-            }, 300000); // 5分鐘
+            }, 300000);
         }
         
     } catch (error) {
@@ -485,7 +432,6 @@ client.on('messageCreate', async (message) => {
     
     const content = message.content.trim();
     
-    // 指令處理
     if (content.startsWith('!')) {
         const command = content.slice(1).toLowerCase();
         
@@ -523,7 +469,6 @@ client.on('messageCreate', async (message) => {
         return;
     }
     
-    // 檢查是否為經文引用格式
     const bibleRefPattern = /^[\u4e00-\u9fff]+\d+(:|\：|\s*第\s*)\d+|^[\u4e00-\u9fff]+\d+$/;
     
     if (bibleRefPattern.test(content)) {
@@ -535,7 +480,6 @@ client.on('messageCreate', async (message) => {
 client.on('messageReactionAdd', async (reaction, user) => {
     if (user.bot) return;
     
-    // 獲取完整的反應對象
     if (reaction.partial) {
         try {
             await reaction.fetch();
@@ -548,14 +492,12 @@ client.on('messageReactionAdd', async (reaction, user) => {
     const messageId = reaction.message.id;
     const emoji = reaction.emoji.name;
     
-    // 檢查是否為我們追蹤的訊息
     if (messageStrongsMap.has(messageId)) {
         const strongs = messageStrongsMap.get(messageId);
         const selectedStrong = strongs.find(s => s.emoji === emoji);
         
         if (selectedStrong) {
             try {
-                // 獲取Strong's number詳細資料
                 console.log('查詢Strong\'s number:', selectedStrong.number);
                 const strongsData = await getStrongsData(selectedStrong.number);
                 
@@ -567,7 +509,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
                         .setTitle(`📖 原文編號：${selectedStrong.number}`)
                         .setColor(0x0099ff);
                     
-                    // 動態添加有資料的欄位
                     if (strongInfo.w_text && strongInfo.w_text !== '無資料') {
                         embed.addFields({ name: '原文', value: strongInfo.w_text, inline: true });
                     }
@@ -580,8 +521,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
                     if (strongInfo.w_meaning && strongInfo.w_meaning !== '無資料') {
                         embed.addFields({ name: '字義', value: strongInfo.w_meaning });
                     }
-                    
-                    // 如果有其他可用的欄位也添加進去
                     if (strongInfo.w_orig && strongInfo.w_orig !== '無資料') {
                         embed.addFields({ name: '原始形式', value: strongInfo.w_orig, inline: true });
                     }
