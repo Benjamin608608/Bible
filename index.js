@@ -533,23 +533,56 @@ client.on('messageReactionAdd', async (reaction, user) => {
                         .setTitle(`📖 原文編號：${selectedStrong.number}`)
                         .setColor(0x0099ff);
                     
-                    if (strongInfo.w_text && strongInfo.w_text !== '無資料') {
-                        embed.addFields({ name: '原文', value: strongInfo.w_text, inline: true });
+                    // 原文字典 - 原文意義
+                    if (strongInfo.w_text) {
+                        embed.addFields({ 
+                            name: '📜 原文', 
+                            value: strongInfo.w_text, 
+                            inline: true 
+                        });
                     }
-                    if (strongInfo.w_translit && strongInfo.w_translit !== '無資料') {
-                        embed.addFields({ name: '音譯', value: strongInfo.w_translit, inline: true });
+                    
+                    // 音譯
+                    if (strongInfo.w_translit) {
+                        embed.addFields({ 
+                            name: '🔤 音譯', 
+                            value: strongInfo.w_translit, 
+                            inline: true 
+                        });
                     }
-                    if (strongInfo.w_part && strongInfo.w_part !== '無資料') {
-                        embed.addFields({ name: '詞性', value: strongInfo.w_part, inline: true });
+                    
+                    // 詞性分析 - 語法信息
+                    if (strongInfo.w_part) {
+                        embed.addFields({ 
+                            name: '📝 詞性', 
+                            value: strongInfo.w_part, 
+                            inline: true 
+                        });
                     }
-                    if (strongInfo.w_meaning && strongInfo.w_meaning !== '無資料') {
-                        embed.addFields({ name: '字義', value: strongInfo.w_meaning });
+                    
+                    // 字義解釋 - 中文含義
+                    if (strongInfo.w_meaning) {
+                        embed.addFields({ 
+                            name: '💭 字義解釋', 
+                            value: strongInfo.w_meaning 
+                        });
                     }
-                    if (strongInfo.w_orig && strongInfo.w_orig !== '無資料') {
-                        embed.addFields({ name: '原始形式', value: strongInfo.w_orig, inline: true });
+                    
+                    // 如果有額外的有用資訊也添加
+                    if (strongInfo.w_orig && strongInfo.w_orig !== strongInfo.w_text) {
+                        embed.addFields({ 
+                            name: '🔍 原始形式', 
+                            value: strongInfo.w_orig, 
+                            inline: true 
+                        });
                     }
-                    if (strongInfo.w_src && strongInfo.w_src !== '無資料') {
-                        embed.addFields({ name: '來源', value: strongInfo.w_src, inline: true });
+                    
+                    if (strongInfo.w_src) {
+                        embed.addFields({ 
+                            name: '📚 來源', 
+                            value: strongInfo.w_src, 
+                            inline: true 
+                        });
                     }
                     
                     embed.setFooter({ text: '資料來源：信望愛聖經工具' });
