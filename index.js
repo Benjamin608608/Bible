@@ -182,7 +182,15 @@ async function getBibleVerse(bookCode, chapter, verse = null, version = 'unv') {
 // 獲取Strong's number詳細資料
 async function getStrongsData(strongNumber) {
     try {
-        const urls = [
+        // 嘗試多種不同的API參數組合
+        const apiConfigs = [
+            {
+                url: 'https://bible.fhl.net/json/qb.php',
+                params: {
+                    sw: strongNumber,
+                    gb: 0
+                }
+            },
             {
                 url: 'https://bible.fhl.net/json/qb.php',
                 params: {
@@ -194,29 +202,45 @@ async function getStrongsData(strongNumber) {
                 url: 'https://bible.fhl.net/json/qb.php',
                 params: {
                     sw: strongNumber,
+                    gb: 0,
+                    op: 'sw'
+                }
+            },
+            {
+                url: 'https://bible.fhl.net/json/qb.php',
+                params: {
+                    chineses: strongNumber,
                     gb: 0
                 }
             }
         ];
         
-        for (const config of urls) {
-            console.log('嘗試獲取Strong\'s資料:', config.url, config.params);
+        for (const config of apiConfigs) {
+            console.log('嘗試獲取Strong\'s資料:', config.url, 'params:', config.params);
             
-            const response = await axios.get(config.url, { 
-                params: config.params,
-                timeout: 10000,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (compatible; Bible Discord Bot)'
+            try {
+                const response = await axios.get(config.url, { 
+                    params: config.params,
+                    timeout: 10000,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (compatible; Bible Discord Bot)',
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                console.log(`API回應 (${JSON.stringify(config.params)}):`, JSON.stringify(response.data, null, 2));
+                
+                if (response.data && response.data.record && response.data.record.length > 0) {
+                    console.log('找到資料，使用此配置');
+                    return response.data;
                 }
-            });
-            
-            console.log('Strong\'s API回應:', JSON.stringify(response.data, null, 2));
-            
-            if (response.data && response.data.record && response.data.record.length > 0) {
-                return response.data;
+            } catch (apiError) {
+                console.log(`API配置失敗 (${JSON.stringify(config.params)}):`, apiError.message);
+                continue;
             }
         }
         
+        console.log('所有API配置都未返回資料');
         return null;
     } catch (error) {
         console.error('獲取Strong\'s資料時發生錯誤:', error.message);
@@ -528,10 +552,13 @@ client.on('messageReactionAdd', async (reaction, user) => {
                 if (strongsData && strongsData.record && strongsData.record.length > 0) {
                     const strongInfo = strongsData.record[0];
                     console.log('獲取到的Strong\'s資料:', strongInfo);
+                    console.log('所有可用欄位:', Object.keys(strongInfo));
                     
                     const embed = new EmbedBuilder()
                         .setTitle(`📖 原文編號：${selectedStrong.number}`)
                         .setColor(0x0099ff);
+                    
+                    let hasContent = false;
                     
                     // 原文字典 - 原文意義
                     if (strongInfo.w_text) {
@@ -540,6 +567,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
                             value: strongInfo.w_text, 
                             inline: true 
                         });
+                        hasContent = true;
                     }
                     
                     // 音譯
@@ -549,6 +577,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
                             value: strongInfo.w_translit, 
                             inline: true 
                         });
+                        hasContent = true;
                     }
                     
                     // 詞性分析 - 語法信息
@@ -558,6 +587,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
                             value: strongInfo.w_part, 
                             inline: true 
                         });
+                        hasContent = true;
                     }
                     
                     // 字義解釋 - 中文含義
@@ -566,22 +596,41 @@ client.on('messageReactionAdd', async (reaction, user) => {
                             name: '💭 字義解釋', 
                             value: strongInfo.w_meaning 
                         });
+                        hasContent = true;
                     }
                     
-                    // 如果有額外的有用資訊也添加
-                    if (strongInfo.w_orig && strongInfo.w_orig !== strongInfo.w_text) {
-                        embed.addFields({ 
-                            name: '🔍 原始形式', 
-                            value: strongInfo.w_orig, 
-                            inline: true 
+                    // 檢查其他可能的欄位名稱
+                    const otherFields = ['meaning', 'definition', 'chinese', 'explanation', 'interpret'];
+                    otherFields.forEach(field => {
+                        if (strongInfo[field] && !hasContent) {
+                            embed.addFields({ 
+                                name: '💭 含義', 
+                                value: strongInfo[field] 
+                            });
+                            hasContent = true;
+                        }
+                    });
+                    
+                    // 如果還是沒有內容，顯示所有非空欄位
+                    if (!hasContent) {
+                        console.log('沒有標準欄位，顯示所有可用資料...');
+                        Object.keys(strongInfo).forEach(key => {
+                            if (strongInfo[key] && typeof strongInfo[key] === 'string' && strongInfo[key].trim() !== '') {
+                                embed.addFields({ 
+                                    name: key, 
+                                    value: strongInfo[key].slice(0, 1024), // Discord 欄位值限制
+                                    inline: true 
+                                });
+                                hasContent = true;
+                            }
                         });
                     }
                     
-                    if (strongInfo.w_src) {
+                    // 如果真的沒有任何內容
+                    if (!hasContent) {
                         embed.addFields({ 
-                            name: '📚 來源', 
-                            value: strongInfo.w_src, 
-                            inline: true 
+                            name: '⚠️ 資料狀態', 
+                            value: '此編號的詳細資料暫時無法取得' 
                         });
                     }
                     
@@ -590,11 +639,21 @@ client.on('messageReactionAdd', async (reaction, user) => {
                     await reaction.message.reply({ embeds: [embed] });
                 } else {
                     console.log('未找到Strong\'s資料或資料為空');
-                    await reaction.message.reply(`❌ 無法獲取 ${selectedStrong.number} 的詳細資料，可能該編號暫無資料`);
+                    // 提供更詳細的錯誤信息
+                    await reaction.message.reply(`❌ 無法獲取 ${selectedStrong.number} 的詳細資料
+                    
+可能原因：
+• 該編號在API中暫無詳細資料
+• 編號格式可能需要轉換 (${selectedStrong.number} → 其他格式)
+• API暫時無法提供此編號的字典資料
+
+建議：可嘗試在信望愛網站直接查詢此編號`);
                 }
             } catch (error) {
                 console.error('獲取Strong\'s資料時發生錯誤:', error);
-                await reaction.message.reply(`❌ 查詢 ${selectedStrong.number} 時發生錯誤：${error.message}`);
+                await reaction.message.reply(`❌ 查詢 ${selectedStrong.number} 時發生錯誤：${error.message}
+                
+這可能是暫時的網路問題，請稍後再試。`);
             }
         }
     }
