@@ -264,7 +264,7 @@ function parseStrongsNumbers(text) {
         const escapedNumber = escapeRegExp(strongNumber);
         const pattern = '<' + escapedNumber + '>';
         const regex = new RegExp(pattern, 'g');
-        const superscript = toSuperscript(index);
+        const superscript = ' ' + toSuperscript(index);
         
         processedText = processedText.replace(regex, superscript);
         console.log('替換', pattern, '為', superscript);
@@ -310,7 +310,7 @@ function formatBibleText(data) {
                 const escapedNumber = escapeRegExp(strongNumber);
                 const pattern = '<' + escapedNumber + '>';
                 const regex = new RegExp(pattern, 'g');
-                const superscript = toSuperscript(index);
+                const superscript = ' ' + toSuperscript(index);
                 
                 processedVerseText = processedVerseText.replace(regex, superscript);
             }
@@ -357,17 +357,6 @@ async function handleBibleQuery(message, reference) {
         }
         
         let responseText = formatted.text;
-        
-        if (formatted.strongs.length > 0) {
-            responseText += '\n\n📖 **原文編號說明：**\n';
-            responseText += '點擊下方表情符號查看原文詳細資料\n';
-            formatted.strongs.forEach(strong => {
-                responseText += `${strong.emoji} = ${strong.number}\n`;
-            });
-            
-            console.log('準備發送的完整訊息:', responseText);
-            console.log('Strong\'s數量:', formatted.strongs.length);
-        }
         
         const sentMessage = await message.reply(responseText);
         console.log('訊息已發送，ID:', sentMessage.id);
