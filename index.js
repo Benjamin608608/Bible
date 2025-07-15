@@ -9,9 +9,17 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions
     ]
 });
+
+// 數字表情符號映射
+const NUMBER_EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+const EXTENDED_EMOJIS = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯', '🇰', '🇱', '🇲', '🇳', '🇴', '🇵', '🇶', '🇷', '🇸', '🇹'];
+
+// 儲存訊息的Strong's number映射
+const messageStrongsMap = new Map();
 
 // 聖經書卷中文對應表
 const BIBLE_BOOKS = {
@@ -88,17 +96,11 @@ const BIBLE_BOOKS = {
 
 // 解析經文引用格式
 function parseReference(input) {
-    // 移除所有空格
     const cleanInput = input.replace(/\s/g, '');
     
-    // 支援多種格式
-    // 馬太福音1:1, 太1:1, 馬太1:1
     const patterns = [
-        // 完整書名 + 章:節
         /^(.+?)(\d+):(\d+)$/,
-        // 完整書名 + 章節（用第號分隔）
         /^(.+?)(\d+)第(\d+)節$/,
-        // 完整書名 + 章
         /^(.+?)(\d+)章$/,
         /^(.+?)(\d+)$/
     ];
@@ -110,7 +112,6 @@ function parseReference(input) {
             const chapter = parseInt(match[2]);
             const verse = match[3] ? parseInt(match[3]) : null;
             
-            // 查找書卷縮寫
             const bookCode = BIBLE_BOOKS[bookName];
             if (bookCode) {
                 return {
@@ -126,14 +127,15 @@ function parseReference(input) {
     return null;
 }
 
-// 從信望愛站API獲取經文
+// 從信望愛站API獲取經文（包含Strong's number）
 async function getBibleVerse(bookCode, chapter, verse = null, version = 'unv') {
     try {
         const params = {
             chineses: bookCode,
             chap: chapter,
             version: version,
-            gb: 0 // 正體中文
+            gb: 0,
+            strong: 1  // 啟用Strong's number
         };
         
         if (verse) {
@@ -161,25 +163,103 @@ async function getBibleVerse(bookCode, chapter, verse = null, version = 'unv') {
     }
 }
 
-// 格式化經文輸出 - 簡化版本
+// 獲取Strong's number詳細資料
+async function getStrongsData(strongNumber) {
+    try {
+        const url = 'https://bible.fhl.net/json/qb.php';
+        const params = {
+            strong: strongNumber,
+            gb: 0
+        };
+        
+        const response = await axios.get(url, { 
+            params,
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; Bible Discord Bot)'
+            }
+        });
+        
+        return response.data;
+    } catch (error) {
+        console.error('獲取Strong\'s資料時發生錯誤:', error.message);
+        throw error;
+    }
+}
+
+// 解析Strong's number並添加編號
+function parseStrongsNumbers(text) {
+    if (!text) return { text: text, strongs: [] };
+    
+    const strongsPattern = /<([HG]\d+)>/g;
+    const strongs = [];
+    let match;
+    let counter = 1;
+    
+    // 收集所有Strong's number
+    while ((match = strongsPattern.exec(text)) !== null) {
+        const strongNumber = match[1];
+        if (!strongs.find(s => s.number === strongNumber)) {
+            strongs.push({
+                number: strongNumber,
+                index: counter,
+                emoji: counter <= 10 ? NUMBER_EMOJIS[counter - 1] : EXTENDED_EMOJIS[counter - 11]
+            });
+            counter++;
+        }
+    }
+    
+    // 替換文本中的Strong's number為編號
+    let processedText = text;
+    strongs.forEach(strong => {
+        const regex = new RegExp(`<${strong.number}>`, 'g');
+        processedText = processedText.replace(regex, `^${strong.index}^`);
+    });
+    
+    return { text: processedText, strongs: strongs };
+}
+
+// 格式化經文輸出（包含Strong's number）
 function formatBibleText(data) {
     if (!data || !data.record || data.record.length === 0) {
         return null;
     }
     
-    // 如果是多節經文
+    let allStrongs = [];
+    let formattedText = '';
+    
     if (data.record.length > 1) {
-        return data.record.map(verse => {
-            return `**${verse.chineses} ${verse.chap}:${verse.sec}** ${verse.bible_text}`;
-        }).join('\n\n');
+        // 多節經文
+        data.record.forEach(verse => {
+            const parsed = parseStrongsNumbers(verse.bible_text);
+            formattedText += `**${verse.chineses} ${verse.chap}:${verse.sec}** ${parsed.text}\n\n`;
+            allStrongs = allStrongs.concat(parsed.strongs);
+        });
     } else {
         // 單節經文
         const verse = data.record[0];
-        return `**${verse.chineses} ${verse.chap}:${verse.sec}** ${verse.bible_text}`;
+        const parsed = parseStrongsNumbers(verse.bible_text);
+        formattedText = `**${verse.chineses} ${verse.chap}:${verse.sec}** ${parsed.text}`;
+        allStrongs = parsed.strongs;
     }
+    
+    // 去除重複的Strong's number
+    const uniqueStrongs = [];
+    const seen = new Set();
+    allStrongs.forEach(strong => {
+        if (!seen.has(strong.number)) {
+            seen.add(strong.number);
+            uniqueStrongs.push(strong);
+        }
+    });
+    
+    return {
+        text: formattedText,
+        strongs: uniqueStrongs
+    };
 }
 
-// 處理聖經查詢 - 簡化版本
+// 處理聖經查詢
 async function handleBibleQuery(message, reference) {
     try {
         const parsed = parseReference(reference);
@@ -192,15 +272,41 @@ async function handleBibleQuery(message, reference) {
         
         // 獲取經文
         const data = await getBibleVerse(parsed.book, parsed.chapter, parsed.verse);
-        const formattedText = formatBibleText(data);
+        const formatted = formatBibleText(data);
         
-        if (!formattedText) {
+        if (!formatted) {
             await message.reply('❌ 找不到指定的經文，請檢查書卷名稱和章節是否正確。');
             return;
         }
         
-        // 直接回覆經文文字
-        await message.reply(formattedText);
+        // 發送經文
+        let responseText = formatted.text;
+        
+        // 如果有Strong's number，添加說明
+        if (formatted.strongs.length > 0) {
+            responseText += '\n\n📖 **原文編號說明：**\n';
+            responseText += '點擊下方表情符號查看原文詳細資料\n';
+            formatted.strongs.forEach(strong => {
+                responseText += `${strong.emoji} = ${strong.number}\n`;
+            });
+        }
+        
+        const sentMessage = await message.reply(responseText);
+        
+        // 如果有Strong's number，添加表情符號反應並儲存映射
+        if (formatted.strongs.length > 0) {
+            messageStrongsMap.set(sentMessage.id, formatted.strongs);
+            
+            // 添加表情符號
+            for (const strong of formatted.strongs) {
+                await sentMessage.react(strong.emoji);
+            }
+            
+            // 設置5分鐘後清理映射
+            setTimeout(() => {
+                messageStrongsMap.delete(sentMessage.id);
+            }, 300000); // 5分鐘
+        }
         
     } catch (error) {
         console.error('處理聖經查詢時發生錯誤:', error);
@@ -247,13 +353,17 @@ client.on('messageCreate', async (message) => {
         
         if (command === 'bible' || command === 'help') {
             await message.reply(`📖 **聖經機器人使用說明**
-直接輸入經文引用來查詢聖經經文
+直接輸入經文引用來查詢聖經經文，並顯示原文編號
 
 **支援格式：**
 • \`太1:1\` - 查詢單節
 • \`馬太福音1:1\` - 完整書名  
 • \`詩23\` - 查詢整章
 • \`約3:16\` - 任何書卷
+
+**新功能：**
+• 經文中的小數字代表原文編號
+• 點擊表情符號查看原文詳細資料
 
 **其他指令：**
 • \`!books\` - 顯示書卷列表
@@ -280,6 +390,59 @@ client.on('messageCreate', async (message) => {
     
     if (bibleRefPattern.test(content)) {
         await handleBibleQuery(message, content);
+    }
+});
+
+// 表情符號反應事件監聽器
+client.on('messageReactionAdd', async (reaction, user) => {
+    if (user.bot) return;
+    
+    // 獲取完整的反應對象
+    if (reaction.partial) {
+        try {
+            await reaction.fetch();
+        } catch (error) {
+            console.error('無法獲取反應:', error);
+            return;
+        }
+    }
+    
+    const messageId = reaction.message.id;
+    const emoji = reaction.emoji.name;
+    
+    // 檢查是否為我們追蹤的訊息
+    if (messageStrongsMap.has(messageId)) {
+        const strongs = messageStrongsMap.get(messageId);
+        const selectedStrong = strongs.find(s => s.emoji === emoji);
+        
+        if (selectedStrong) {
+            try {
+                // 獲取Strong's number詳細資料
+                const strongsData = await getStrongsData(selectedStrong.number);
+                
+                if (strongsData && strongsData.record && strongsData.record.length > 0) {
+                    const strongInfo = strongsData.record[0];
+                    
+                    const embed = new EmbedBuilder()
+                        .setTitle(`📖 原文編號：${selectedStrong.number}`)
+                        .setColor(0x0099ff)
+                        .addFields(
+                            { name: '原文', value: strongInfo.w_text || '無資料', inline: true },
+                            { name: '音譯', value: strongInfo.w_translit || '無資料', inline: true },
+                            { name: '詞性', value: strongInfo.w_part || '無資料', inline: true },
+                            { name: '字義', value: strongInfo.w_meaning || '無資料' }
+                        )
+                        .setFooter({ text: '資料來源：信望愛聖經工具' });
+                    
+                    await reaction.message.reply({ embeds: [embed] });
+                } else {
+                    await reaction.message.reply(`❌ 無法獲取 ${selectedStrong.number} 的詳細資料`);
+                }
+            } catch (error) {
+                console.error('獲取Strong\'s資料時發生錯誤:', error);
+                await reaction.message.reply(`❌ 查詢 ${selectedStrong.number} 時發生錯誤`);
+            }
+        }
     }
 });
 
