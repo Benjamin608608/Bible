@@ -527,33 +527,110 @@ client.on('messageCreate', async (message) => {
             try {
                 console.log('測試Strong\'s number API...');
                 
-                // 測試幾個不同的Strong's number
-                const testNumbers = ['WHO9002', 'WTH8804', 'WHO7225', 'H430', 'G2316'];
-                let testResults = '🔍 **Strong\'s Number API 測試結果：**\n\n';
+                await message.reply('🔍 **正在測試 dic.php 和 w.php API...**');
                 
-                for (const strongNumber of testNumbers) {
+                // 測試 dic.php（原文字典）
+                let testResults = '📚 **dic.php (原文字典) 測試：**\n\n';
+                
+                const dicConfigs = [
+                    { N: 0, k: '2316' }, // 希臘文：神 (theos)
+                    { N: 1, k: '430' },  // 希伯來文：神 (elohim)
+                    { N: 0, k: '25' },   // 希臘文：愛 (agape)
+                    { N: 1, k: '7225' }  // 希伯來文：起初 (reshith)
+                ];
+                
+                for (const config of dicConfigs) {
                     try {
-                        const data = await getStrongsData(strongNumber);
-                        if (data && data.record && data.record.length > 0) {
-                            const record = data.record[0];
-                            testResults += `**${strongNumber}:**\n`;
-                            
-                            // 顯示所有可用的欄位
+                        const response = await axios.get('https://bible.fhl.net/json/dic.php', {
+                            params: { ...config, gb: 0 },
+                            timeout: 5000
+                        });
+                        
+                        if (response.data && response.data.record && response.data.record.length > 0) {
+                            const record = response.data.record[0];
+                            testResults += `**${config.N === 0 ? 'G' : 'H'}${config.k}:**\n`;
                             Object.keys(record).forEach(key => {
-                                if (record[key]) {
-                                    testResults += `• ${key}: ${record[key]}\n`;
+                                if (record[key] && key !== 'id') {
+                                    testResults += `• ${key}: ${record[key].slice(0, 50)}${record[key].length > 50 ? '...' : ''}\n`;
                                 }
                             });
                             testResults += '\n';
                         } else {
-                            testResults += `**${strongNumber}:** 無資料\n\n`;
+                            testResults += `**${config.N === 0 ? 'G' : 'H'}${config.k}:** 無資料\n\n`;
                         }
                     } catch (error) {
-                        testResults += `**${strongNumber}:** 錯誤 - ${error.message}\n\n`;
+                        testResults += `**${config.N === 0 ? 'G' : 'H'}${config.k}:** 錯誤 - ${error.message}\n\n`;
                     }
                 }
                 
                 await message.reply(testResults);
+                
+                // 測試 w.php（字彙分析）
+                testResults = '🔬 **w.php (字彙分析) 測試：**\n\n';
+                
+                const wConfigs = [
+                    { engs: 'Gen', chap: 1, sec: 1 },  // 創世記 1:1
+                    { engs: 'Joh', chap: 3, sec: 16 }  // 約翰福音 3:16
+                ];
+                
+                for (const config of wConfigs) {
+                    try {
+                        const response = await axios.get('https://bible.fhl.net/json/w.php', {
+                            params: { ...config, gb: 0 },
+                            timeout: 5000
+                        });
+                        
+                        if (response.data && response.data.record && response.data.record.length > 0) {
+                            testResults += `**${config.engs} ${config.chap}:${config.sec} (前3個詞):**\n`;
+                            response.data.record.slice(0, 3).forEach((record, index) => {
+                                testResults += `${index + 1}. `;
+                                Object.keys(record).forEach(key => {
+                                    if (record[key] && ['word', 'sn', 'pro', 'exp'].includes(key)) {
+                                        testResults += `${key}:${record[key]} `;
+                                    }
+                                });
+                                testResults += '\n';
+                            });
+                            testResults += '\n';
+                        } else {
+                            testResults += `**${config.engs} ${config.chap}:${config.sec}:** 無資料\n\n`;
+                        }
+                    } catch (error) {
+                        testResults += `**${config.engs} ${config.chap}:${config.sec}:** 錯誤 - ${error.message}\n\n`;
+                    }
+                }
+                
+                await message.reply(testResults);
+                
+            } catch (error) {
+                await message.reply(`❌ 測試失敗：${error.message}`);
+            }
+        } else if (command === 'testw') {
+            // 專門測試當前經文的字彙分析
+            try {
+                await message.reply('🔬 **測試創世記 1:1 的完整字彙分析...**');
+                
+                const response = await axios.get('https://bible.fhl.net/json/w.php', {
+                    params: { engs: 'Gen', chap: 1, sec: 1, gb: 0 },
+                    timeout: 10000
+                });
+                
+                if (response.data && response.data.record && response.data.record.length > 0) {
+                    let result = `📖 **創世記 1:1 字彙分析 (共${response.data.record.length}個詞):**\n\n`;
+                    
+                    response.data.record.forEach((word, index) => {
+                        result += `**${index + 1}.** `;
+                        if (word.word) result += `原文: ${word.word} `;
+                        if (word.sn) result += `編號: ${word.sn} `;
+                        if (word.pro) result += `詞性: ${word.pro} `;
+                        if (word.exp) result += `解釋: ${word.exp}`;
+                        result += '\n';
+                    });
+                    
+                    await message.reply(result);
+                } else {
+                    await message.reply('❌ 未找到字彙分析資料');
+                }
             } catch (error) {
                 await message.reply(`❌ 測試失敗：${error.message}`);
             }
@@ -696,17 +773,48 @@ client.on('messageReactionAdd', async (reaction, user) => {
                     await reaction.message.reply({ embeds: [embed] });
                 } else {
                     console.log('未找到Strong\'s資料或資料為空');
-                    // 提供更詳細的錯誤信息和建議
-                    await reaction.message.reply(`❌ 無法獲取 ${selectedStrong.number} 的詳細資料
+                    
+                    // 根據編號格式提供不同的說明
+                    const isCustomFormat = selectedStrong.number.startsWith('WAH') || 
+                                          selectedStrong.number.startsWith('WHO') || 
+                                          selectedStrong.number.startsWith('WTH') ||
+                                          selectedStrong.number.startsWith('WG');
+                    
+                    if (isCustomFormat) {
+                        // 對於信望愛自定義格式，提供簡單說明並建議
+                        const embed = new EmbedBuilder()
+                            .setTitle(`📖 原文編號：${selectedStrong.number}`)
+                            .setColor(0xffa500)
+                            .addFields(
+                                { 
+                                    name: '📋 編號說明', 
+                                    value: '此為信望愛聖經工具的內部原文標記編號' 
+                                },
+                                { 
+                                    name: '🎯 功能', 
+                                    value: '用於標示經文中每個詞彙的原文位置，便於原文研讀' 
+                                },
+                                { 
+                                    name: '💡 建議', 
+                                    value: '如需詳細字典資料，建議:\n• 參考傳統Strong\'s字典 (H/G編號)\n• 使用信望愛網站的完整功能\n• 查閱其他原文字典資源' 
+                                }
+                            )
+                            .setFooter({ text: '信望愛聖經工具 - 原文標記系統' });
+                        
+                        await reaction.message.reply({ embeds: [embed] });
+                    } else {
+                        // 對於其他格式，提供原來的錯誤信息
+                        await reaction.message.reply(`❌ 無法獲取 ${selectedStrong.number} 的詳細資料
 
 **可能原因：**
-• 此編號格式 (${selectedStrong.number}) 可能是信望愛專用格式
-• 字典API中可能沒有此特定編號的資料
-• 需要轉換為標準Strong's格式 (H/G + 數字)
+• 該編號在字典API中暫無資料
+• 編號格式可能需要轉換
+• API暫時無法提供此編號的字典資料
 
 **建議：**
 • 嘗試在信望愛網站直接查詢: https://bible.fhl.net
-• 此編號在經文中仍可正確標示原文位置`);
+• 查閱其他Strong\'s字典資源`);
+                    }
                 }
             } catch (error) {
                 console.error('獲取Strong\'s資料時發生錯誤:', error);
