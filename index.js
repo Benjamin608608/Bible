@@ -187,7 +187,52 @@ async function getStrongsData(strongNumber) {
     }
 }
 
+// Unicode上標數字映射
+const SUPERSCRIPT_NUMBERS = {
+    '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵',
+    '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '0': '⁰'
+};
+
+// 將數字轉換為上標
+function toSuperscript(number) {
+    return number.toString().split('').map(digit => SUPERSCRIPT_NUMBERS[digit] || digit).join('');
+}
+
 // 解析Strong's number並添加編號
+function parseStrongsNumbers(text) {
+    if (!text) return { text: text, strongs: [] };
+    
+    // 匹配各種可能的Strong's number格式
+    const strongsPattern = /<(WH\w+|[HG]\d+)>/g;
+    const strongs = [];
+    const strongsMap = new Map(); // 用於追蹤已分配的編號
+    let match;
+    let counter = 1;
+    
+    console.log('原始經文文本:', text);
+    
+    // 收集所有不重複的Strong's number
+    while ((match = strongsPattern.exec(text)) !== null) {
+        const strongNumber = match[1];
+        console.log('找到Strong\'s number:', strongNumber);
+        
+        if (!strongsMap.has(strongNumber)) {
+            strongsMap.set(strongNumber, counter);
+            strongs.push({
+                number: strongNumber,
+                index: counter,
+                emoji: counter <= 10 ? NUMBER_EMOJIS[counter - 1] : EXTENDED_EMOJIS[counter - 11]
+            });
+            counter++;
+        }
+    }
+    
+    console.log('解析到的Strong\'s numbers:', strongs);
+    
+    // 替換文本中的Strong's number為上標數字
+    let processedText = text;
+    strongsMap.forEach((index, strongNumber) => {
+        const regex = new RegExp(`<${strongNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\// 解析Strong's number並添加編號
 function parseStrongsNumbers(text) {
     if (!text) return { text: text, strongs: [] };
     
@@ -217,9 +262,51 @@ function parseStrongsNumbers(text) {
     });
     
     return { text: processedText, strongs: strongs };
+}')}>`, 'g');
+        const superscript = toSuperscript(index);
+        processedText = processedText.replace(regex, superscript);
+        console.log(`替換 <${strongNumber}> 為 ${superscript}`);
+    });
+    
+    console.log('處理後的文本:', processedText);
+    
+    return { text: processedText, strongs: strongs };
 }
 
 // 格式化經文輸出（包含Strong's number）
+function formatBibleText(data) {
+    if (!data || !data.record || data.record.length === 0) {
+        return null;
+    }
+    
+    let allStrongs = [];
+    let strongsMap = new Map(); // 用於去重和統一編號
+    let formattedText = '';
+    
+    console.log('開始格式化經文，記錄數量:', data.record.length);
+    
+    if (data.record.length > 1) {
+        // 多節經文 - 先收集所有Strong's number建立統一編號
+        let allText = '';
+        data.record.forEach(verse => {
+            allText += verse.bible_text + ' ';
+        });
+        
+        // 解析所有Strong's number並建立編號映射
+        const globalParsed = parseStrongsNumbers(allText);
+        const globalStrongsMap = new Map();
+        globalParsed.strongs.forEach(strong => {
+            globalStrongsMap.set(strong.number, strong.index);
+        });
+        
+        // 現在處理每一節，使用統一的編號
+        data.record.forEach(verse => {
+            const verseText = verse.bible_text;
+            let processedVerseText = verseText;
+            
+            // 使用全局編號映射替換
+            globalStrongsMap.forEach((index, strongNumber) => {
+                const regex = new RegExp(`<${strongNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\// 格式化經文輸出（包含Strong's number）
 function formatBibleText(data) {
     if (!data || !data.record || data.record.length === 0) {
         return null;
@@ -257,6 +344,30 @@ function formatBibleText(data) {
         text: formattedText,
         strongs: uniqueStrongs
     };
+}')}>`, 'g');
+                const superscript = toSuperscript(index);
+                processedVerseText = processedVerseText.replace(regex, superscript);
+            });
+            
+            formattedText += `**${verse.chineses} ${verse.chap}:${verse.sec}** ${processedVerseText}\n\n`;
+        });
+        
+        allStrongs = globalParsed.strongs;
+    } else {
+        // 單節經文
+        const verse = data.record[0];
+        console.log('處理單節經文:', verse.bible_text);
+        const parsed = parseStrongsNumbers(verse.bible_text);
+        formattedText = `**${verse.chineses} ${verse.chap}:${verse.sec}** ${parsed.text}`;
+        allStrongs = parsed.strongs;
+    }
+    
+    console.log('最終Strong\'s numbers:', allStrongs);
+    
+    return {
+        text: formattedText,
+        strongs: allStrongs
+    };
 }
 
 // 處理聖經查詢
@@ -289,22 +400,35 @@ async function handleBibleQuery(message, reference) {
             formatted.strongs.forEach(strong => {
                 responseText += `${strong.emoji} = ${strong.number}\n`;
             });
+            
+            console.log('準備發送的完整訊息:', responseText);
+            console.log('Strong\'s數量:', formatted.strongs.length);
         }
         
         const sentMessage = await message.reply(responseText);
+        console.log('訊息已發送，ID:', sentMessage.id);
         
         // 如果有Strong's number，添加表情符號反應並儲存映射
         if (formatted.strongs.length > 0) {
+            console.log('開始添加表情符號反應...');
             messageStrongsMap.set(sentMessage.id, formatted.strongs);
             
             // 添加表情符號
             for (const strong of formatted.strongs) {
-                await sentMessage.react(strong.emoji);
+                try {
+                    console.log(`添加表情符號: ${strong.emoji} for ${strong.number}`);
+                    await sentMessage.react(strong.emoji);
+                } catch (error) {
+                    console.error(`添加表情符號 ${strong.emoji} 失敗:`, error);
+                }
             }
+            
+            console.log('所有表情符號添加完成');
             
             // 設置5分鐘後清理映射
             setTimeout(() => {
                 messageStrongsMap.delete(sentMessage.id);
+                console.log(`清理訊息 ${sentMessage.id} 的映射`);
             }, 300000); // 5分鐘
         }
         
