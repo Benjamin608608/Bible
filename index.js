@@ -428,11 +428,12 @@ function parseIQBibleResponse(apiResponse, bookName, chapter, verse, originalTex
                 }
         }
         
-        // 如果有原文數據且為單節查詢，提取Strong's編號
+        // 如果有原文數據且為單節查詢，處理Strong's編號並重建經文
         if (originalTextData && verse && Array.isArray(originalTextData)) {
             console.log('處理原文數據，包含', originalTextData.length, '個詞彙');
             
-            strongsNumbers = originalTextData
+            // 提取Strong's編號信息
+            const strongsData = originalTextData
                 .filter(wordData => wordData.strongs)
                 .map((wordData, index) => ({
                     number: wordData.strongs,
@@ -441,9 +442,63 @@ function parseIQBibleResponse(apiResponse, bookName, chapter, verse, originalTex
                     pronunciation: wordData.pronun ? JSON.parse(wordData.pronun).dic || '' : '',
                     emoji: index < NUMBER_EMOJIS.length ? 
                         NUMBER_EMOJIS[index] : 
-                        EXTENDED_EMOJIS[index - NUMBER_EMOJIS.length] || '❓'
-                }))
-                .slice(0, 20); // 限制數量
+                        EXTENDED_EMOJIS[index - NUMBER_EMOJIS.length] || '❓',
+                    originalOrder: wordData.orig_order || (index + 1)
+                }));
+            
+            strongsNumbers = strongsData.slice(0, 20); // 限制數量
+            
+            // 從 glossary 重建帶上標的英文經文
+            if (strongsNumbers.length > 0) {
+                console.log('從原文數據重建帶上標的英文經文');
+                
+                const englishWords = originalTextData.map((wordData, index) => {
+                    const glossary = wordData.glossary || '';
+                    let englishWord = '';
+                    
+                    // 從 glossary 提取 KJV 翻譯
+                    const kjvMatch = glossary.match(/KJV:\s*([^.]+)\./);
+                    if (kjvMatch) {
+                        const kjvText = kjvMatch[1].trim();
+                        // 提取第一個有意義的單字
+                        const words = kjvText.split(',');
+                        englishWord = words[0].trim();
+                        
+                        // 清理特殊標記
+                        englishWord = englishWord.replace(/^X\s+/, ''); // 移除 X 前綴
+                        englishWord = englishWord.replace(/\s*\([^)]*\)/g, ''); // 移除括號內容
+                        englishWord = englishWord.replace(/[+\-]/g, ''); // 移除加減號
+                        englishWord = englishWord.trim();
+                        
+                        // 特殊處理
+                        if (kjvText.includes('(as such unrepresented in English)') || englishWord === '') {
+                            englishWord = ''; // 不在英文中表示的詞
+                        }
+                    }
+                    
+                    // 如果有Strong's編號且有英文單字，添加上標
+                    if (wordData.strongs && englishWord) {
+                        const strongsIndex = strongsData.findIndex(s => s.number === wordData.strongs);
+                        if (strongsIndex !== -1) {
+                            const superscript = toSuperscript(strongsIndex + 1);
+                            englishWord += superscript;
+                        }
+                    }
+                    
+                    return englishWord;
+                }).filter(word => word.length > 0);
+                
+                if (englishWords.length > 0) {
+                    // 優先使用重建的帶上標經文
+                    const reconstructedText = englishWords.join(' ');
+                    console.log('重建的帶上標經文:', reconstructedText);
+                    
+                    // 只有當重建的經文合理時才使用，否則保留原來的經文
+                    if (reconstructedText.length > 10) { // 基本長度檢查
+                        verseText = reconstructedText;
+                    }
+                }
+            }
             
             console.log('提取到', strongsNumbers.length, '個Strong\'s編號');
         }
@@ -644,8 +699,14 @@ client.on('messageCreate', async (message) => {
 **功能特色：**
 • 📜 **KJV英文版本** - 經典英文聖經
 • 🔤 **原文研讀** - 希伯來文/希臘文 Strong's 編號
+• 🔢 **上標數字** - 英文單字帶上標，對應表情符號編號
 • 🎯 **互動查詢** - 點擊表情符號查看原文字義
 • 📚 **完整字典** - 包含發音、詞性、字義解釋
+
+**使用說明：**
+1. 查詢經文會顯示帶上標數字的英文版本
+2. 上標數字對應下方的表情符號 (¹→1️⃣, ²→2️⃣)
+3. 點擊表情符號查看該單字的原文詳細資訊
 
 **其他指令：**
 • \`!books\` - 顯示書卷列表
@@ -684,7 +745,68 @@ client.on('messageCreate', async (message) => {
                 await message.reply(`❌ **IQ Bible API 測試失敗**\n\n**錯誤:** ${error.message}\n\n請檢查API密鑰是否正確設置`);
             }
             
-        } else if (command === 'apikey') {
+        } else if (command === 'teststrongs') {
+            try {
+                await message.reply('🔍 **測試 Strong\'s API 不同格式...**');
+                
+                const testNumber = '7225'; // 創世記1:1第一個詞
+                const testFormats = [
+                    // 不同的參數名稱
+                    { endpoint: 'GetStrongs', params: { strongsNumber: testNumber }, desc: '原格式' },
+                    { endpoint: 'GetStrongs', params: { strongNumber: testNumber }, desc: '無s格式' },
+                    { endpoint: 'GetStrongs', params: { strongs: testNumber }, desc: 'strongs格式' },
+                    { endpoint: 'GetStrongs', params: { number: testNumber }, desc: 'number格式' },
+                    { endpoint: 'GetStrongs', params: { id: testNumber }, desc: 'id格式' },
+                    
+                    // 不同的數字格式
+                    { endpoint: 'GetStrongs', params: { strongsNumber: `H${testNumber}` }, desc: 'H前綴格式' },
+                    { endpoint: 'GetStrongs', params: { strongsNumber: `0${testNumber}` }, desc: '前導零格式' },
+                    { endpoint: 'GetStrongs', params: { strongsNumber: `${testNumber.padStart(5, '0')}` }, desc: '5位數格式' },
+                ];
+                
+                let results = '**Strong\'s API 測試結果:**\n\n';
+                
+                for (const test of testFormats) {
+                    try {
+                        console.log(`測試 ${test.desc}:`, test.params);
+                        
+                        const response = await axios.get(`https://iq-bible.p.rapidapi.com/${test.endpoint}`, {
+                            params: test.params,
+                            timeout: 10000,
+                            headers: {
+                                'X-RapidAPI-Host': 'iq-bible.p.rapidapi.com',
+                                'X-RapidAPI-Key': IQ_BIBLE_API_KEY,
+                                'Accept': 'application/json'
+                            }
+                        });
+                        
+                        const dataPreview = JSON.stringify(response.data).slice(0, 100);
+                        
+                        if (response.data && response.data !== "" && response.data !== null) {
+                            results += `✅ **${test.desc}**: 成功\n`;
+                            results += `   數據: ${dataPreview}...\n\n`;
+                        } else {
+                            results += `❌ **${test.desc}**: 空數據\n\n`;
+                        }
+                        
+                    } catch (error) {
+                        results += `❌ **${test.desc}**: 錯誤 - ${error.message}\n\n`;
+                    }
+                    
+                    // 分批發送避免過長
+                    if (results.length > 1500) {
+                        await message.reply(results);
+                        results = '';
+                    }
+                }
+                
+                if (results) {
+                    await message.reply(results);
+                }
+                
+            } catch (error) {
+                await message.reply(`❌ 測試失敗：${error.message}`);
+            }
             await message.reply(`🔑 **API設置狀態**
 
 **IQ Bible API Key:** ${IQ_BIBLE_API_KEY ? '✅ 已設置' : '❌ 未設置'}
@@ -785,10 +907,11 @@ client.on('messageReactionAdd', async (reaction, user) => {
                     
                     await reaction.message.reply({ embeds: [embed] });
                 } else {
-                    // 如果API沒有返回數據，但我們有本地的glossary數據
+                    // API沒有返回數據，但我們有本地的glossary數據 - 這是常見情況
+                    console.log('API返回空數據，使用本地glossary數據');
                     if (selectedStrong.glossary) {
                         const embed = new EmbedBuilder()
-                            .setTitle(`📖 原文編號：${selectedStrong.number}`)
+                            .setTitle(`📖 原文編號：Strong's ${selectedStrong.number}`)
                             .setColor(0x0099ff);
                         
                         if (selectedStrong.word) {
@@ -833,13 +956,23 @@ client.on('messageReactionAdd', async (reaction, user) => {
                             });
                         }
                         
-                        // 提取詳細定義
-                        const definitionLines = lines.slice(1, -2); // 排除第一行和最後的KJV行
-                        if (definitionLines.length > 0) {
-                            const definition = definitionLines.join(' ').slice(0, 1024);
+                        // 提取詳細定義 (數字編號的定義)
+                        const definitionMatches = glossary.match(/\d+\.\s*([^\n]+)/g);
+                        if (definitionMatches) {
+                            const definitions = definitionMatches.slice(0, 3).join('\n'); // 最多顯示3個定義
                             embed.addFields({ 
                                 name: '📚 詳細解釋', 
-                                value: definition
+                                value: definitions.slice(0, 1024)
+                            });
+                        }
+                        
+                        // 提取詞根信息
+                        const rootMatch = glossary.match(/Root\(s\):\s*([^\n]+)/);
+                        if (rootMatch) {
+                            embed.addFields({ 
+                                name: '🌱 詞根', 
+                                value: rootMatch[1], 
+                                inline: true 
                             });
                         }
                         
@@ -848,7 +981,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
                         await reaction.message.reply({ embeds: [embed] });
                     } else {
                         const embed = new EmbedBuilder()
-                            .setTitle(`📖 原文編號：${selectedStrong.number}`)
+                            .setTitle(`📖 原文編號：Strong's ${selectedStrong.number}`)
                             .setColor(0xffa500)
                             .addFields(
                                 { 
