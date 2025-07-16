@@ -1,104 +1,4 @@
-// 處理聖經查詢
-async function handleBibleQuery(message, reference) {
-    try {
-        const parsed = parseReference(reference);
-        if (!parsed) {
-            await message.reply('❌ 無法解析經文引用格式。請使用如：太1:1、馬太福音1:1、詩23 等格式。');
-            return;
-        }
-
-// 獲取英文版本（作為後備）
-async function getVerse(bookName, chapter, verse) {
-    try {
-        console.log('查詢英文經文:', { book: bookName, chapter, verse });
-        
-        const bookId = await getBookId(bookName);
-        const verseId = `${bookId}${String(chapter).padStart(3, '0')}${String(verse).padStart(3, '0')}`;
-        
-        const data = await makeAPIRequest('GetVerse', { verseId: verseId });
-        
-        return {
-            data: data,
-            endpoint: 'GetVerse',
-            verseId: verseId
-        };
-    } catch (error) {
-        console.error('獲取英文經文失敗:', error.message);
-        throw error;
-    }
-}
-
-// 獲取英文整章（作為後備）
-async function getChapter(bookName, chapter) {
-    try {
-        console.log('查詢英文整章:', { book: bookName, chapter });
-        
-        const bookId = await getBookId(bookName);
-        const chapterId = `${bookId}${String(chapter).padStart(3, '0')}`;
-        
-        const data = await makeAPIRequest('GetChapter', { chapterId: chapterId });
-        
-        return {
-            data: data,
-            endpoint: 'GetChapter',
-            chapterId: chapterId
-        };
-    } catch (error) {
-        console.error('獲取英文章節失敗:', error.message);
-        throw error;
-    }
-}
-        
-        console.log('解析結果:', parsed);
-        
-        let chineseData = null;
-        let originalData = null;
-        
-        // 首先獲取中文版本的經文
-        try {
-            if (parsed.verse) {
-                // 單節查詢 - 嘗試獲取中文版本
-                try {
-                    chineseData = await getVerse(parsed.book, parsed.chapter, parsed.verse);
-                    console.log('成功獲取中文經文');
-                } catch (error) {
-                    console.log('中文版本獲取失敗，使用英文版本');
-                }
-                
-                // 同時嘗試獲取原文數據（用於 Strong's numbers）
-                try {
-                    originalData = await getOriginalText(parsed.book, parsed.chapter, parsed.verse);
-                    if (originalData && originalData.data) {
-                        console.log('成功獲取原文數據，將提供 Strong\'s 功能');
-                    }
-                } catch (error) {
-                    console.log('原文數據獲取失敗，將不提供 Strong\'s 功能');
-                }
-            } else {
-                // 整章查詢
-                chineseData = await getChapter(parsed.book, parsed.chapter);
-            }
-        } catch (error) {
-            console.log('中文版本查詢失敗:', error.message);
-        }
-        
-        // 如果沒有中文數據，使用原文數據或英文版本
-        const primaryData = chineseData || originalData;
-        
-        if (!primaryData) {
-            await message.reply('❌ 找不到指定的經文，請檢查書卷名稱和章節是否正確。');
-            return;
-        }
-        
-        // 解析主要經文數據（中文優先）
-        const formatted = parseVerseResponse(primaryData, parsed.bookName, parsed.chapter, parsed.verse);
-        
-        // 如果有原文數據，提取 Strong's numbers
-        let strongsNumbers = [];
-        if (originalData && originalData.data && Array.isArray(originalData.data)) {
-            console.log('提取 Strong\'s numbers 從原文數據');
-            strongsNumbers = originalData.data
-                .filter(wordData => wordData.const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
 
 // 環境變數設定
@@ -397,6 +297,48 @@ async function getChineseChapter(bookName, chapter) {
     }
 }
 
+// 獲取英文版本（作為後備）
+async function getVerse(bookName, chapter, verse) {
+    try {
+        console.log('查詢英文經文:', { book: bookName, chapter, verse });
+        
+        const bookId = await getBookId(bookName);
+        const verseId = `${bookId}${String(chapter).padStart(3, '0')}${String(verse).padStart(3, '0')}`;
+        
+        const data = await makeAPIRequest('GetVerse', { verseId: verseId });
+        
+        return {
+            data: data,
+            endpoint: 'GetVerse',
+            verseId: verseId
+        };
+    } catch (error) {
+        console.error('獲取英文經文失敗:', error.message);
+        throw error;
+    }
+}
+
+// 獲取英文整章（作為後備）
+async function getChapter(bookName, chapter) {
+    try {
+        console.log('查詢英文整章:', { book: bookName, chapter });
+        
+        const bookId = await getBookId(bookName);
+        const chapterId = `${bookId}${String(chapter).padStart(3, '0')}`;
+        
+        const data = await makeAPIRequest('GetChapter', { chapterId: chapterId });
+        
+        return {
+            data: data,
+            endpoint: 'GetChapter',
+            chapterId: chapterId
+        };
+    } catch (error) {
+        console.error('獲取英文章節失敗:', error.message);
+        throw error;
+    }
+}
+
 // 獲取原文文本（帶Strong's numbers）
 async function getOriginalText(bookName, chapter, verse) {
     try {
@@ -507,79 +449,6 @@ function parseVerseResponse(apiResponse, bookName, chapter, verse) {
                 }
                 break;
                 
-            case 'GetOriginalText':
-                if (Array.isArray(data) && data.length > 0) {
-                    console.log('解析 GetOriginalText 數據，包含', data.length, '個單詞');
-                    
-                    // 構建英文經文（從現有的翻譯或回退到簡單拼接）
-                    const englishWords = [];
-                    const hebrewWords = [];
-                    
-                    data.forEach((wordData, index) => {
-                        // 提取希伯來文單詞
-                        const hebrewWord = wordData.word || '';
-                        if (hebrewWord) {
-                            hebrewWords.push(hebrewWord);
-                        }
-                        
-                        // 嘗試從 glossary 中提取英文含義
-                        const glossary = wordData.glossary || '';
-                        if (glossary) {
-                            // 提取 KJV 翻譯部分
-                            const kjvMatch = glossary.match(/KJV:\s*([^.]+)\./);
-                            if (kjvMatch) {
-                                const kjvWords = kjvMatch[1].split(',')[0].trim(); // 取第一個翻譯
-                                englishWords.push(kjvWords);
-                            } else {
-                                // 如果沒有KJV翻譯，使用詞彙的第一部分
-                                const firstLine = glossary.split('\n')[0];
-                                const wordMatch = firstLine.match(/\)\s*([^.]+)/);
-                                if (wordMatch) {
-                                    englishWords.push(wordMatch[1].split(' ')[0]);
-                                }
-                            }
-                        }
-                        
-                        // 創建 Strong's 編號映射
-                        const strongsNum = wordData.strongs;
-                        if (strongsNum) {
-                            strongsNumbers.push({
-                                number: strongsNum,
-                                word: hebrewWord,
-                                glossary: glossary,
-                                pronunciation: wordData.pronun ? JSON.parse(wordData.pronun).dic || '' : '',
-                                emoji: index < NUMBER_EMOJIS.length ? 
-                                    NUMBER_EMOJIS[index] : 
-                                    EXTENDED_EMOJIS[index - NUMBER_EMOJIS.length] || '❓'
-                            });
-                        }
-                    });
-                    
-                    // 構建經文文本
-                    if (englishWords.length > 0) {
-                        verseText = englishWords.join(' ');
-                    } else {
-                        // 回退：使用希伯來文
-                        verseText = hebrewWords.join(' ');
-                    }
-                    
-                    // 限制 Strong's 數量
-                    strongsNumbers = strongsNumbers.slice(0, 20);
-                    
-                    console.log('原文解析結果:', {
-                        hebrewWords: hebrewWords.length,
-                        englishWords: englishWords.length,
-                        strongsCount: strongsNumbers.length,
-                        textPreview: verseText.slice(0, 100)
-                    });
-                    
-                } else if (typeof data === 'string') {
-                    verseText = data;
-                } else if (data && data.text) {
-                    verseText = data.text;
-                }
-                break;
-                
             default:
                 if (typeof data === 'string') {
                     verseText = data;
@@ -638,35 +507,87 @@ async function handleBibleQuery(message, reference) {
         
         console.log('解析結果:', parsed);
         
-        let data = null;
+        let chineseData = null;
+        let originalData = null;
+        let strongsNumbers = [];
         
-        // 如果查詢單節且要獲取原文，先嘗試 GetOriginalText
         if (parsed.verse) {
+            // 單節查詢
+            console.log('開始查詢單節經文...');
+            
+            // 1. 獲取中文經文
             try {
-                const originalData = await getOriginalText(parsed.book, parsed.chapter, parsed.verse);
-                if (originalData && originalData.data) {
-                    data = originalData;
-                    console.log('成功獲取原文文本');
+                chineseData = await getChineseVerse(parsed.book, parsed.chapter, parsed.verse);
+                console.log('成功獲取中文經文');
+            } catch (error) {
+                console.log('中文經文獲取失敗:', error.message);
+            }
+            
+            // 2. 獲取原文數據（用於Strong's編號）
+            try {
+                originalData = await getOriginalText(parsed.book, parsed.chapter, parsed.verse);
+                if (originalData && originalData.data && Array.isArray(originalData.data) && originalData.data.length > 0) {
+                    console.log('成功獲取原文數據，包含', originalData.data.length, '個詞彙');
+                    
+                    // 提取Strong's編號
+                    strongsNumbers = originalData.data
+                        .filter(wordData => wordData.strongs)
+                        .map((wordData, index) => ({
+                            number: wordData.strongs,
+                            word: wordData.word || '',
+                            glossary: wordData.glossary || '',
+                            pronunciation: wordData.pronun ? JSON.parse(wordData.pronun).dic || '' : '',
+                            emoji: index < NUMBER_EMOJIS.length ? 
+                                NUMBER_EMOJIS[index] : 
+                                EXTENDED_EMOJIS[index - NUMBER_EMOJIS.length] || '❓'
+                        }))
+                        .slice(0, 20); // 限制數量
+                    
+                    console.log('提取到', strongsNumbers.length, '個Strong\'s編號');
+                } else {
+                    console.log('原文數據為空或格式不正確');
                 }
             } catch (error) {
-                console.log('獲取原文失敗，使用一般查詢');
+                console.log('原文數據獲取失敗:', error.message);
+            }
+        } else {
+            // 整章查詢
+            console.log('開始查詢整章經文...');
+            try {
+                chineseData = await getChineseChapter(parsed.book, parsed.chapter);
+                console.log('成功獲取中文整章');
+            } catch (error) {
+                console.log('中文整章獲取失敗:', error.message);
             }
         }
         
-        // 如果沒有原文版本，使用標準查詢
-        if (!data) {
+        // 如果沒有中文數據，嘗試英文版本作為後備
+        if (!chineseData) {
+            console.log('使用英文版本作為後備');
             if (parsed.verse) {
-                data = await getVerse(parsed.book, parsed.chapter, parsed.verse);
+                chineseData = await getVerse(parsed.book, parsed.chapter, parsed.verse);
             } else {
-                data = await getChapter(parsed.book, parsed.chapter);
+                chineseData = await getChapter(parsed.book, parsed.chapter);
             }
         }
         
-        const formatted = parseVerseResponse(data, parsed.bookName, parsed.chapter, parsed.verse);
-        
-        if (!formatted || !formatted.record || formatted.record.length === 0) {
+        if (!chineseData || !chineseData.data) {
             await message.reply('❌ 找不到指定的經文，請檢查書卷名稱和章節是否正確。');
             return;
+        }
+        
+        // 解析中文經文
+        const formatted = parseVerseResponse(chineseData, parsed.bookName, parsed.chapter, parsed.verse);
+        
+        if (!formatted || !formatted.record || formatted.record.length === 0) {
+            await message.reply('❌ 經文解析失敗，請稍後再試。');
+            return;
+        }
+        
+        // 如果有原文數據的Strong's編號，覆蓋解析結果中的strongs
+        if (strongsNumbers.length > 0) {
+            formatted.strongs = strongsNumbers;
+            console.log('使用原文數據的Strong\'s編號:', strongsNumbers.length, '個');
         }
         
         const record = formatted.record[0];
@@ -681,6 +602,13 @@ async function handleBibleQuery(message, reference) {
         // 如果有Strong's numbers，添加提示
         if (formatted.strongs && formatted.strongs.length > 0) {
             responseText += '\n\n🔍 *點擊下方表情符號查看原文字義*';
+        }
+        
+        // 添加版本資訊
+        if (chineseData.version) {
+            responseText += `\n\n*版本: ${chineseData.version.toUpperCase()}*`;
+        } else {
+            responseText += '\n\n*版本: 中文和合本*';
         }
         
         // 確保訊息長度不超過Discord限制
@@ -927,52 +855,6 @@ client.on('messageCreate', async (message) => {
                 await message.reply(`❌ 獲取版本列表失敗：${error.message}`);
             }
             
-        } else if (command === 'debug') {
-            try {
-                await message.reply('🔍 **調試 API 參數和回應...**');
-                
-                // 測試 GetBookIdByBookName
-                console.log('=== 調試 GetBookIdByBookName ===');
-                const testBooks = ['Genesis', 'Matthew', 'John'];
-                let debugInfo = '**書卷ID調試結果:**\n\n';
-                
-                for (const book of testBooks) {
-                    try {
-                        const bookId = await makeAPIRequest('GetBookIdByBookName', { bookName: book });
-                        debugInfo += `• ${book}: ${JSON.stringify(bookId)}\n`;
-                    } catch (error) {
-                        debugInfo += `• ${book}: 錯誤 - ${error.message}\n`;
-                    }
-                }
-                
-                await message.reply(debugInfo);
-                
-                // 測試 GetVerse 用不同參數
-                console.log('=== 調試 GetVerse ===');
-                const testVerseParams = [
-                    { verseId: '1001001' }, // Genesis 1:1 用標準ID
-                    { verseId: '40001001' }, // Matthew 1:1 用標準ID
-                    { verseId: '1001001', version: 'kjv' },
-                    { verseId: '1001001', version: 'KJV' }
-                ];
-                
-                let verseDebugInfo = '**GetVerse 調試結果:**\n\n';
-                
-                for (const params of testVerseParams) {
-                    try {
-                        const result = await makeAPIRequest('GetVerse', params);
-                        verseDebugInfo += `• 參數 ${JSON.stringify(params)}: ${typeof result} - ${JSON.stringify(result).slice(0, 100)}...\n\n`;
-                    } catch (error) {
-                        verseDebugInfo += `• 參數 ${JSON.stringify(params)}: 錯誤 - ${error.message}\n\n`;
-                    }
-                }
-                
-                await message.reply(verseDebugInfo);
-                
-            } catch (error) {
-                await message.reply(`❌ 調試失敗：${error.message}`);
-            }
-            
         } else if (command === 'endpoints') {
             const endpointList = `🔧 **IQ Bible API 可用端點：**
 
@@ -1059,51 +941,7 @@ client.on('messageCreate', async (message) => {
                 await message.reply(`❌ 取得隨機經文失敗：${error.message}`);
             }
             
-        } else if (command === 'debug') {
-            try {
-                await message.reply('🔍 **調試 API 參數和回應...**');
-                
-                // 測試 GetBookIdByBookName
-                console.log('=== 調試 GetBookIdByBookName ===');
-                const testBooks = ['Genesis', 'Matthew', 'John'];
-                let debugInfo = '**書卷ID調試結果:**\n\n';
-                
-                for (const book of testBooks) {
-                    try {
-                        const bookId = await makeAPIRequest('GetBookIdByBookName', { bookName: book });
-                        debugInfo += `• ${book}: ${JSON.stringify(bookId)}\n`;
-                    } catch (error) {
-                        debugInfo += `• ${book}: 錯誤 - ${error.message}\n`;
-                    }
-                }
-                
-                await message.reply(debugInfo);
-                
-                // 測試 GetVerse 用不同參數
-                console.log('=== 調試 GetVerse ===');
-                const testVerseParams = [
-                    { verseId: '1001001' }, // Genesis 1:1 用標準ID
-                    { verseId: '40001001' }, // Matthew 1:1 用標準ID
-                    { verseId: '1001001', version: 'kjv' },
-                    { verseId: '1001001', version: 'KJV' }
-                ];
-                
-                let verseDebugInfo = '**GetVerse 調試結果:**\n\n';
-                
-                for (const params of testVerseParams) {
-                    try {
-                        const result = await makeAPIRequest('GetVerse', params);
-                        verseDebugInfo += `• 參數 ${JSON.stringify(params)}: ${typeof result} - ${JSON.stringify(result).slice(0, 100)}...\n\n`;
-                    } catch (error) {
-                        verseDebugInfo += `• 參數 ${JSON.stringify(params)}: 錯誤 - ${error.message}\n\n`;
-                    }
-                }
-                
-                await message.reply(verseDebugInfo);
-                
-            } catch (error) {
-                await message.reply(`❌ 調試失敗：${error.message}`);
-            }
+        } else if (command === 'apikey') {
             await message.reply(`🔑 **API設置狀態**
 
 **IQ Bible API Key:** ${IQ_BIBLE_API_KEY ? '✅ 已設置' : '❌ 未設置'}
