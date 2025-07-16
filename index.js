@@ -131,7 +131,59 @@ function parseReference(input) {
                     bookName: bookName,
                     chapter: chapter,
                     verse: verse
-                };
+                } else if (command === 'versions') {
+            // 查看可用的聖經版本
+            try {
+                await message.reply('🔍 **查詢可用的聖經版本...**');
+                
+                const response = await axios.get('https://iq-bible.p.rapidapi.com/GetVersions', {
+                    timeout: 10000,
+                    headers: {
+                        'X-RapidAPI-Host': 'iq-bible.p.rapidapi.com',
+                        'X-RapidAPI-Key': IQ_BIBLE_API_KEY,
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                console.log('可用版本:', JSON.stringify(response.data, null, 2));
+                
+                if (response.data && response.status === 200) {
+                    let versionList = '📚 **可用的聖經版本：**\n\n';
+                    
+                    if (Array.isArray(response.data)) {
+                        response.data.forEach(version => {
+                            if (typeof version === 'object') {
+                                const id = version.id || version.versionId || version.abbreviation;
+                                const name = version.name || version.fullName || version.title;
+                                const lang = version.language || version.lang || '';
+                                versionList += `• **${id}** - ${name} ${lang ? `(${lang})` : ''}\n`;
+                            } else {
+                                versionList += `• ${version}\n`;
+                            }
+                        });
+                    } else if (typeof response.data === 'object') {
+                        Object.keys(response.data).forEach(key => {
+                            versionList += `• **${key}** - ${response.data[key]}\n`;
+                        });
+                    }
+                    
+                    // 分批發送以避免超長
+                    if (versionList.length > 1800) {
+                        const parts = versionList.match(/.{1,1800}/g);
+                        for (let i = 0; i < parts.length; i++) {
+                            await message.reply(parts[i]);
+                        }
+                    } else {
+                        await message.reply(versionList);
+                    }
+                } else {
+                    await message.reply('❌ 無法獲取版本列表');
+                }
+                
+            } catch (error) {
+                await message.reply(`❌ 獲取版本列表失敗：${error.message}`);
+            }
+        };
             }
         }
     }
@@ -170,7 +222,32 @@ async function getBibleVerse(bookName, chapter, verse = null) {
         
         // 嘗試不同的API端點
         const endpoints = [
-            // 使用GetVerse端點
+            // 使用GetVerse端點 - 嘗試中文版本
+            {
+                name: 'GetVerse_CUV',
+                url: 'https://iq-bible.p.rapidapi.com/GetVerse',
+                params: verse ? {
+                    verseId: `${bookId}${String(chapter).padStart(3, '0')}${String(verse).padStart(3, '0')}`,
+                    versionId: 'cuv' // 中文和合本
+                } : null
+            },
+            {
+                name: 'GetVerse_CUVS',
+                url: 'https://iq-bible.p.rapidapi.com/GetVerse',
+                params: verse ? {
+                    verseId: `${bookId}${String(chapter).padStart(3, '0')}${String(verse).padStart(3, '0')}`,
+                    versionId: 'cuvs' // 中文和合本簡體
+                } : null
+            },
+            {
+                name: 'GetVerse_CUVT',
+                url: 'https://iq-bible.p.rapidapi.com/GetVerse',
+                params: verse ? {
+                    verseId: `${bookId}${String(chapter).padStart(3, '0')}${String(verse).padStart(3, '0')}`,
+                    versionId: 'cuvt' // 中文和合本繁體
+                } : null
+            },
+            // 使用GetVerse端點 - KJV作為後備
             {
                 name: 'GetVerse',
                 url: 'https://iq-bible.p.rapidapi.com/GetVerse',
@@ -179,7 +256,15 @@ async function getBibleVerse(bookName, chapter, verse = null) {
                     versionId: 'kjv'
                 } : null
             },
-            // 使用GetChapter端點
+            // 使用GetChapter端點 - 中文版本
+            {
+                name: 'GetChapter_CUV',
+                url: 'https://iq-bible.p.rapidapi.com/GetChapter',
+                params: {
+                    chapterId: `${bookId}${String(chapter).padStart(3, '0')}`,
+                    versionId: 'cuv'
+                }
+            },
             {
                 name: 'GetChapter',
                 url: 'https://iq-bible.p.rapidapi.com/GetChapter',
@@ -194,7 +279,7 @@ async function getBibleVerse(bookName, chapter, verse = null) {
                 url: 'https://iq-bible.p.rapidapi.com/GetChapterByBookAndChapterId',
                 params: {
                     bookAndChapterId: `${bookId}.${chapter}`,
-                    versionId: 'kjv'
+                    versionId: 'cuv'
                 }
             }
         ];
