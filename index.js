@@ -257,52 +257,57 @@ function parseStrongsNumbers(text) {
     const strongsPattern = /<([A-Z]*\w*\d+)>/g;
     const strongs = [];
     const strongsMap = new Map();
+    const allMatches = [];
     let counter = 1;
     
     // 重置正則表達式
     strongsPattern.lastIndex = 0;
     
+    // 首先收集所有匹配項
     let match;
     while ((match = strongsPattern.exec(text)) !== null) {
         const originalStrongNumber = match[1];
         const normalizedStrongNumber = normalizeStrongsNumber(originalStrongNumber);
         
-        console.log('找到Strong\'s number:', originalStrongNumber, '標準化為:', normalizedStrongNumber);
+        allMatches.push({
+            original: originalStrongNumber,
+            normalized: normalizedStrongNumber,
+            fullMatch: match[0], // 完整的匹配文本，例如 <WH05921>
+            index: match.index
+        });
         
-        // 使用標準化的編號作為鍵，避免重複
-        if (!strongsMap.has(normalizedStrongNumber)) {
-            strongsMap.set(normalizedStrongNumber, counter);
+        console.log('找到Strong\'s number:', originalStrongNumber, '標準化為:', normalizedStrongNumber);
+    }
+    
+    // 為每個唯一的標準化編號分配索引
+    allMatches.forEach(matchItem => {
+        if (!strongsMap.has(matchItem.normalized)) {
+            strongsMap.set(matchItem.normalized, counter);
             strongs.push({
-                number: normalizedStrongNumber,  // 使用標準化的編號
-                originalNumber: originalStrongNumber,  // 保留原始編號供替換使用
+                number: matchItem.normalized,  // 使用標準化的編號
                 index: counter,
                 emoji: counter <= 10 ? NUMBER_EMOJIS[counter - 1] : EXTENDED_EMOJIS[counter - 11]
             });
             counter++;
         }
-    }
+    });
     
     console.log('解析到的Strong\'s numbers:', strongs);
     
     // 替換文本中的Strong's number為上標數字
     let processedText = text;
     
-    // 建立原始編號到索引的映射
-    const originalToIndexMap = new Map();
-    strongs.forEach(strong => {
-        originalToIndexMap.set(strong.originalNumber, strong.index);
-    });
+    // 按照出現位置從後往前替換，避免位置偏移問題
+    allMatches.sort((a, b) => b.index - a.index);
     
-    // 使用原始編號進行替換
-    for (const [originalNumber, index] of originalToIndexMap) {
-        const escapedNumber = escapeRegExp(originalNumber);
-        const pattern = '<' + escapedNumber + '>';
-        const regex = new RegExp(pattern, 'g');
+    allMatches.forEach(matchItem => {
+        const index = strongsMap.get(matchItem.normalized);
         const superscript = ' ' + toSuperscript(index);
         
-        processedText = processedText.replace(regex, superscript);
-        console.log('替換', pattern, '為', superscript);
-    }
+        // 使用完整匹配文本進行替換
+        processedText = processedText.replace(matchItem.fullMatch, superscript);
+        console.log('替換', matchItem.fullMatch, '為', superscript);
+    });
     
     // 清理剩餘的特殊符號
     processedText = processedText.replace(/[{}^]/g, '');
@@ -324,7 +329,7 @@ function formatBibleText(data) {
     console.log('開始格式化經文，記錄數量:', data.record.length);
     
     if (data.record.length > 1) {
-        // 多節經文
+        // 多節經文 - 先收集所有文本進行全局處理
         let allText = '';
         data.record.forEach(verse => {
             allText += verse.bible_text + ' ';
@@ -338,25 +343,35 @@ function formatBibleText(data) {
             normalizedToIndexMap.set(strong.number, strong.index);
         });
         
-        // 建立原始編號到索引的映射
-        const originalToIndexMap = new Map();
-        globalParsed.strongs.forEach(strong => {
-            originalToIndexMap.set(strong.originalNumber, strong.index);
-        });
-        
+        // 處理每一節經文
         data.record.forEach(verse => {
-            const verseText = verse.bible_text;
-            let processedVerseText = verseText;
+            const verseParsed = parseStrongsNumbers(verse.bible_text);
             
-            // 使用原始編號進行替換
-            for (const [originalNumber, index] of originalToIndexMap) {
-                const escapedNumber = escapeRegExp(originalNumber);
-                const pattern = '<' + escapedNumber + '>';
-                const regex = new RegExp(pattern, 'g');
-                const superscript = ' ' + toSuperscript(index);
-                
-                processedVerseText = processedVerseText.replace(regex, superscript);
+            // 使用全局的索引映射來確保一致性
+            let processedVerseText = verse.bible_text;
+            const strongsPattern = /<([A-Z]*\w*\d+)>/g;
+            const matches = [];
+            
+            let match;
+            while ((match = strongsPattern.exec(verse.bible_text)) !== null) {
+                matches.push({
+                    fullMatch: match[0],
+                    original: match[1],
+                    normalized: normalizeStrongsNumber(match[1]),
+                    index: match.index
+                });
             }
+            
+            // 從後往前替換
+            matches.sort((a, b) => b.index - a.index);
+            
+            matches.forEach(matchItem => {
+                const globalIndex = normalizedToIndexMap.get(matchItem.normalized);
+                if (globalIndex) {
+                    const superscript = ' ' + toSuperscript(globalIndex);
+                    processedVerseText = processedVerseText.replace(matchItem.fullMatch, superscript);
+                }
+            });
             
             processedVerseText = processedVerseText.replace(/[{}^]/g, '');
             formattedText += `**${verse.chineses} ${verse.chap}:${verse.sec}** ${processedVerseText}\n\n`;
@@ -530,48 +545,8 @@ client.on('messageReactionAdd', async (reaction, user) => {
         const selectedStrong = strongs.find(s => s.emoji === emoji);
         
         if (selectedStrong) {
-            try {
-                console.log('查詢Strong\'s number:', selectedStrong.number);
-                const strongsData = await getStrongsData(selectedStrong.number);
-                
-                if (strongsData && strongsData.record && strongsData.record.length > 0) {
-                    const strongInfo = strongsData.record[0];
-                    console.log('獲取到的Strong\'s資料:', strongInfo);
-                    
-                    const embed = new EmbedBuilder()
-                        .setTitle(`📖 原文編號：${selectedStrong.number}`)
-                        .setColor(0x0099ff);
-                    
-                    if (strongInfo.w_text && strongInfo.w_text !== '無資料') {
-                        embed.addFields({ name: '原文', value: strongInfo.w_text, inline: true });
-                    }
-                    if (strongInfo.w_translit && strongInfo.w_translit !== '無資料') {
-                        embed.addFields({ name: '音譯', value: strongInfo.w_translit, inline: true });
-                    }
-                    if (strongInfo.w_part && strongInfo.w_part !== '無資料') {
-                        embed.addFields({ name: '詞性', value: strongInfo.w_part, inline: true });
-                    }
-                    if (strongInfo.w_meaning && strongInfo.w_meaning !== '無資料') {
-                        embed.addFields({ name: '字義', value: strongInfo.w_meaning });
-                    }
-                    if (strongInfo.w_orig && strongInfo.w_orig !== '無資料') {
-                        embed.addFields({ name: '原始形式', value: strongInfo.w_orig, inline: true });
-                    }
-                    if (strongInfo.w_src && strongInfo.w_src !== '無資料') {
-                        embed.addFields({ name: '來源', value: strongInfo.w_src, inline: true });
-                    }
-                    
-                    embed.setFooter({ text: '資料來源：信望愛聖經工具' });
-                    
-                    await reaction.message.reply({ embeds: [embed] });
-                } else {
-                    console.log('未找到Strong\'s資料或資料為空');
-                    await reaction.message.reply(`❌ 無法獲取 ${selectedStrong.number} 的詳細資料，可能該編號暫無資料`);
-                }
-            } catch (error) {
-                console.error('獲取Strong\'s資料時發生錯誤:', error);
-                await reaction.message.reply(`❌ 查詢 ${selectedStrong.number} 時發生錯誤：${error.message}`);
-            }
+            // 直接回應編號，不查詢詳細資料
+            await reaction.message.reply(`📖 原文編號：**${selectedStrong.number}**`);
         }
     }
 });
