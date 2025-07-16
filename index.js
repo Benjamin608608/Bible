@@ -301,85 +301,89 @@ function parseIQBibleResponse(apiResponse, bookName, chapter, verse) {
         
         // 根據不同的API端點解析不同的數據格式
         switch (apiResponse.endpoint) {
-            case 'GetChapterByBookAndChapterId':
-                // 處理章節API的回應
-                if (data.chapter && data.chapter.verses) {
-                    if (verse) {
-                        // 查找特定經節
-                        const targetVerse = data.chapter.verses.find(v => v.verseNumber == verse);
-                        if (targetVerse) {
-                            verseText = targetVerse.text || targetVerse.verseText || '';
-                        }
-                    } else {
-                        // 返回整章
-                        verseText = data.chapter.verses.map(v => 
-                            `${v.verseNumber}. ${v.text || v.verseText || ''}`
-                        ).join(' ');
-                    }
-                }
-                break;
-                
             case 'GetVerse':
-                // 處理單節API的回應
-                if (data.text || data.verseText) {
-                    verseText = data.text || data.verseText;
-                } else if (data.verse) {
-                    verseText = data.verse.text || data.verse.verseText || '';
+                console.log('解析GetVerse回應...');
+                if (Array.isArray(data) && data.length > 0) {
+                    // 數據是數組格式
+                    const verseData = data[0];
+                    verseText = verseData.t || verseData.text || verseData.verseText || '';
+                    console.log('從GetVerse提取的經文:', verseText);
+                } else if (data.t || data.text) {
+                    // 數據是對象格式
+                    verseText = data.t || data.text || data.verseText || '';
+                    console.log('從GetVerse對象提取的經文:', verseText);
                 }
                 break;
                 
             case 'GetChapter':
-                // 處理章節API的回應
+                console.log('解析GetChapter回應...');
                 if (Array.isArray(data)) {
                     if (verse) {
-                        const targetVerse = data.find(v => v.verse == verse || v.verseNumber == verse);
+                        // 查找特定經節
+                        const targetVerse = data.find(v => v.v == verse || v.verse == verse);
                         if (targetVerse) {
-                            verseText = targetVerse.text || targetVerse.verseText || '';
+                            verseText = targetVerse.t || targetVerse.text || targetVerse.verseText || '';
+                        }
+                    } else {
+                        // 返回整章
+                        verseText = data.map(v => 
+                            `${v.v || v.verse}. ${v.t || v.text || v.verseText || ''}`
+                        ).join(' ');
+                    }
+                }
+                break;
+                
+            case 'GetChapterByBookAndChapterId':
+                console.log('解析GetChapterByBookAndChapterId回應...');
+                if (data.chapter && data.chapter.verses) {
+                    if (verse) {
+                        const targetVerse = data.chapter.verses.find(v => v.verseNumber == verse);
+                        if (targetVerse) {
+                            verseText = targetVerse.text || targetVerse.t || '';
+                        }
+                    } else {
+                        verseText = data.chapter.verses.map(v => 
+                            `${v.verseNumber}. ${v.text || v.t || ''}`
+                        ).join(' ');
+                    }
+                } else if (Array.isArray(data)) {
+                    // 有時候直接返回經節數組
+                    if (verse) {
+                        const targetVerse = data.find(v => v.v == verse);
+                        if (targetVerse) {
+                            verseText = targetVerse.t || targetVerse.text || '';
                         }
                     } else {
                         verseText = data.map(v => 
-                            `${v.verse || v.verseNumber}. ${v.text || v.verseText || ''}`
-                        ).join(' ');
-                    }
-                } else if (data.verses) {
-                    // 處理有verses屬性的情況
-                    if (verse) {
-                        const targetVerse = data.verses.find(v => v.verse == verse || v.verseNumber == verse);
-                        if (targetVerse) {
-                            verseText = targetVerse.text || targetVerse.verseText || '';
-                        }
-                    } else {
-                        verseText = data.verses.map(v => 
-                            `${v.verse || v.verseNumber}. ${v.text || v.verseText || ''}`
+                            `${v.v}. ${v.t || v.text || ''}`
                         ).join(' ');
                     }
                 }
                 break;
                 
             default:
-                // 嘗試通用解析
-                if (data.text) {
-                    verseText = data.text;
-                } else if (data.verseText) {
-                    verseText = data.verseText;
+                console.log('使用通用解析...');
+                if (Array.isArray(data) && data.length > 0) {
+                    const firstItem = data[0];
+                    verseText = firstItem.t || firstItem.text || firstItem.verseText || '';
+                } else if (data.t || data.text) {
+                    verseText = data.t || data.text;
                 } else if (typeof data === 'string') {
                     verseText = data;
-                } else {
-                    verseText = '無法解析的經文格式';
                 }
         }
         
         // 清理經文文本
         verseText = verseText.trim();
         
+        console.log('解析出的經文文本:', verseText);
+        console.log('經文文本長度:', verseText.length);
+        
         // 限制長度以避免Discord限制
         if (verseText.length > 1500) {
             console.log('經文文本過長，進行截斷:', verseText.length);
             verseText = verseText.slice(0, 1500) + '...';
         }
-        
-        console.log('解析出的經文文本:', verseText);
-        console.log('經文文本長度:', verseText.length);
         
         return {
             record: [{
