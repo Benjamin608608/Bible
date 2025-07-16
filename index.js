@@ -29,6 +29,26 @@ function toSuperscript(number) {
     return number.toString().split('').map(digit => SUPERSCRIPT_NUMBERS[digit] || digit).join('');
 }
 
+// 標準化Strong's number - 移除開頭的W，只保留最後一個英文字母加數字
+function normalizeStrongsNumber(strongNumber) {
+    if (!strongNumber) return strongNumber;
+    
+    // 匹配模式：任何字母開頭，最後一個英文字母加數字
+    const match = strongNumber.match(/([A-Z])(\d+)$/);
+    if (match) {
+        const lastLetter = match[1];  // 最後一個英文字母 (H 或 G)
+        const digits = match[2];      // 數字部分
+        const normalized = lastLetter + digits;
+        
+        console.log(`標準化Strong's number: ${strongNumber} -> ${normalized}`);
+        return normalized;
+    }
+    
+    // 如果無法匹配，返回原始值
+    console.log(`無法標準化Strong's number: ${strongNumber}`);
+    return strongNumber;
+}
+
 // 儲存訊息的Strong's number映射
 const messageStrongsMap = new Map();
 
@@ -182,18 +202,21 @@ async function getBibleVerse(bookCode, chapter, verse = null, version = 'unv') {
 // 獲取Strong's number詳細資料
 async function getStrongsData(strongNumber) {
     try {
+        // 在查詢之前先標準化編號
+        const normalizedNumber = normalizeStrongsNumber(strongNumber);
+        
         const urls = [
             {
                 url: 'https://bible.fhl.net/json/qb.php',
                 params: {
-                    strong: strongNumber,
+                    strong: normalizedNumber,
                     gb: 0
                 }
             },
             {
                 url: 'https://bible.fhl.net/json/qb.php',
                 params: {
-                    sw: strongNumber,
+                    sw: normalizedNumber,
                     gb: 0
                 }
             }
@@ -241,13 +264,17 @@ function parseStrongsNumbers(text) {
     
     let match;
     while ((match = strongsPattern.exec(text)) !== null) {
-        const strongNumber = match[1];
-        console.log('找到Strong\'s number:', strongNumber);
+        const originalStrongNumber = match[1];
+        const normalizedStrongNumber = normalizeStrongsNumber(originalStrongNumber);
         
-        if (!strongsMap.has(strongNumber)) {
-            strongsMap.set(strongNumber, counter);
+        console.log('找到Strong\'s number:', originalStrongNumber, '標準化為:', normalizedStrongNumber);
+        
+        // 使用標準化的編號作為鍵，避免重複
+        if (!strongsMap.has(normalizedStrongNumber)) {
+            strongsMap.set(normalizedStrongNumber, counter);
             strongs.push({
-                number: strongNumber,
+                number: normalizedStrongNumber,  // 使用標準化的編號
+                originalNumber: originalStrongNumber,  // 保留原始編號供替換使用
                 index: counter,
                 emoji: counter <= 10 ? NUMBER_EMOJIS[counter - 1] : EXTENDED_EMOJIS[counter - 11]
             });
@@ -260,8 +287,15 @@ function parseStrongsNumbers(text) {
     // 替換文本中的Strong's number為上標數字
     let processedText = text;
     
-    for (const [strongNumber, index] of strongsMap) {
-        const escapedNumber = escapeRegExp(strongNumber);
+    // 建立原始編號到索引的映射
+    const originalToIndexMap = new Map();
+    strongs.forEach(strong => {
+        originalToIndexMap.set(strong.originalNumber, strong.index);
+    });
+    
+    // 使用原始編號進行替換
+    for (const [originalNumber, index] of originalToIndexMap) {
+        const escapedNumber = escapeRegExp(originalNumber);
         const pattern = '<' + escapedNumber + '>';
         const regex = new RegExp(pattern, 'g');
         const superscript = ' ' + toSuperscript(index);
@@ -297,17 +331,26 @@ function formatBibleText(data) {
         });
         
         const globalParsed = parseStrongsNumbers(allText);
-        const globalStrongsMap = new Map();
+        
+        // 建立標準化編號到索引的映射
+        const normalizedToIndexMap = new Map();
         globalParsed.strongs.forEach(strong => {
-            globalStrongsMap.set(strong.number, strong.index);
+            normalizedToIndexMap.set(strong.number, strong.index);
+        });
+        
+        // 建立原始編號到索引的映射
+        const originalToIndexMap = new Map();
+        globalParsed.strongs.forEach(strong => {
+            originalToIndexMap.set(strong.originalNumber, strong.index);
         });
         
         data.record.forEach(verse => {
             const verseText = verse.bible_text;
             let processedVerseText = verseText;
             
-            for (const [strongNumber, index] of globalStrongsMap) {
-                const escapedNumber = escapeRegExp(strongNumber);
+            // 使用原始編號進行替換
+            for (const [originalNumber, index] of originalToIndexMap) {
+                const escapedNumber = escapeRegExp(originalNumber);
                 const pattern = '<' + escapedNumber + '>';
                 const regex = new RegExp(pattern, 'g');
                 const superscript = ' ' + toSuperscript(index);
@@ -437,6 +480,7 @@ client.on('messageCreate', async (message) => {
 **新功能：**
 • 經文中的小數字代表原文編號
 • 點擊表情符號查看原文詳細資料
+• 使用標準Strong's編號格式 (H/G + 數字)
 
 **其他指令：**
 • \`!books\` - 顯示書卷列表
