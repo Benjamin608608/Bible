@@ -309,13 +309,19 @@ async function getVerse(bookName, chapter, verse) {
         const bookId = await getBookId(bookName);
         const verseId = `${bookId}${String(chapter).padStart(3, '0')}${String(verse).padStart(3, '0')}`;
         
+        console.log('構建的英文查詢 verseId:', verseId);
+        
         const data = await makeAPIRequest('GetVerse', { verseId: verseId });
         
-        return {
-            data: data,
-            endpoint: 'GetVerse',
-            verseId: verseId
-        };
+        if (data && data !== false && data !== null && (typeof data === 'string' || (Array.isArray(data) && data.length > 0) || (typeof data === 'object' && Object.keys(data).length > 0))) {
+            return {
+                data: data,
+                endpoint: 'GetVerse',
+                verseId: verseId
+            };
+        } else {
+            throw new Error(`GetVerse 返回無效數據: ${JSON.stringify(data)}`);
+        }
     } catch (error) {
         console.error('獲取英文經文失敗:', error.message);
         throw error;
@@ -330,13 +336,19 @@ async function getChapter(bookName, chapter) {
         const bookId = await getBookId(bookName);
         const chapterId = `${bookId}${String(chapter).padStart(3, '0')}`;
         
+        console.log('構建的英文章節 chapterId:', chapterId);
+        
         const data = await makeAPIRequest('GetChapter', { chapterId: chapterId });
         
-        return {
-            data: data,
-            endpoint: 'GetChapter',
-            chapterId: chapterId
-        };
+        if (data && Array.isArray(data) && data.length > 0) {
+            return {
+                data: data,
+                endpoint: 'GetChapter',
+                chapterId: chapterId
+            };
+        } else {
+            throw new Error(`GetChapter 返回無效數據: ${JSON.stringify(data)}`);
+        }
     } catch (error) {
         console.error('獲取英文章節失敗:', error.message);
         throw error;
@@ -525,6 +537,7 @@ async function handleBibleQuery(message, reference) {
                 console.log('成功獲取英文經文');
             } catch (error) {
                 console.log('英文經文獲取失敗:', error.message);
+                console.log('將嘗試從原文數據重建經文');
             }
             
             // 2. 獲取原文數據（用於Strong's編號）
@@ -565,7 +578,32 @@ async function handleBibleQuery(message, reference) {
             }
         }
         
-        if (!verseData || !verseData.data) {
+        // 如果沒有英文經文數據，但有原文數據，從原文重建
+        if (!verseData && originalData && originalData.data) {
+            console.log('從原文數據重建英文經文');
+            
+            // 從 glossary 中提取 KJV 翻譯重建經文
+            const reconstructedText = originalData.data
+                .map(wordData => {
+                    const glossary = wordData.glossary || '';
+                    const kjvMatch = glossary.match(/KJV:\s*([^.]+)\./);
+                    if (kjvMatch) {
+                        return kjvMatch[1].split(',')[0].trim();
+                    }
+                    return '';
+                })
+                .filter(word => word.length > 0)
+                .join(' ');
+            
+            if (reconstructedText) {
+                verseData = {
+                    data: [{ t: reconstructedText }],
+                    endpoint: 'ReconstructedFromOriginal',
+                    verseId: originalData.verseId
+                };
+                console.log('成功從原文數據重建經文:', reconstructedText.slice(0, 100));
+            }
+        }
             await message.reply('❌ 找不到指定的經文，請檢查書卷名稱和章節是否正確。');
             return;
         }
