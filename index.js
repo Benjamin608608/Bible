@@ -261,36 +261,60 @@ function formatStrongsMessage(strongNumber, data) {
         return message;
     }
     
-    // 根據你的測試結果調整欄位名稱
     console.log('格式化Strong\'s資料:', JSON.stringify(data, null, 2));
     
-    // 根據RapidAPI的實際回應格式調整這些欄位
-    if (data.word) {
-        message += `**原文：** ${data.word}\n`;
-    }
-    if (data.transliteration) {
-        message += `**音譯：** ${data.transliteration}\n`;
-    }
-    if (data.pronunciation) {
-        message += `**發音：** ${data.pronunciation}\n`;
-    }
-    if (data.partOfSpeech) {
-        message += `**詞性：** ${data.partOfSpeech}\n`;
-    }
-    if (data.shortDefinition) {
-        message += `**簡要定義：** ${data.shortDefinition}\n`;
-    }
-    if (data.definition) {
-        message += `**定義：** ${data.definition}\n`;
-    }
-    if (data.etymology) {
-        message += `**字源：** ${data.etymology}\n`;
+    // RapidAPI 回應是一個陣列，取第一個元素
+    const strongData = Array.isArray(data) ? data[0] : data;
+    
+    if (!strongData) {
+        message += '❌ 無法獲取詳細資料';
+        return message;
     }
     
-    // 如果沒有找到任何已知欄位，顯示原始資料以供調試
-    if (message === `📖 原文編號：**${strongNumber}**\n\n`) {
-        message += '**原始資料：**\n';
-        message += '```json\n' + JSON.stringify(data, null, 2) + '\n```';
+    // 根據實際的回應格式解析資料
+    if (strongData.word) {
+        message += `**原文：** ${strongData.word}\n`;
+    }
+    
+    if (strongData.part_of_speech) {
+        message += `**詞性：** ${strongData.part_of_speech}\n`;
+    }
+    
+    if (strongData.root) {
+        message += `**字根：** ${strongData.root}\n`;
+    }
+    
+    if (strongData.occurences) {
+        message += `**出現次數：** ${strongData.occurences}\n`;
+    }
+    
+    if (strongData.glossary) {
+        // 解析 glossary 欄位，提取主要定義
+        const glossaryLines = strongData.glossary.split('\n');
+        const definition = glossaryLines[1] || glossaryLines[0]; // 取第二行或第一行作為定義
+        
+        if (definition) {
+            // 清理定義文本，移除編號和多餘的標記
+            const cleanDefinition = definition
+                .replace(/^\d+\.\s*/, '') // 移除行首的數字和點
+                .replace(/\[.*?\]/g, '') // 移除方括號內容
+                .replace(/KJV:.*$/, '') // 移除KJV部分
+                .trim();
+            
+            if (cleanDefinition) {
+                message += `**定義：** ${cleanDefinition}\n`;
+            }
+        }
+        
+        // 提取KJV翻譯
+        const kjvMatch = strongData.glossary.match(/KJV:\s*([^.]+)/);
+        if (kjvMatch) {
+            message += `**KJV翻譯：** ${kjvMatch[1].trim()}\n`;
+        }
+    }
+    
+    if (strongData.greek_equivalent && strongData.greek_equivalent.trim()) {
+        message += `**希臘文對應：** ${strongData.greek_equivalent}\n`;
     }
     
     return message;
