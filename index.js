@@ -439,7 +439,9 @@ function addStrongsToText(text, strongsNumbers) {
                 if (cleanWord) {
                     const strongsSuperscript = toSuperscript(strong.number);
                     // 在原文字詞後添加上標編號
-                    const regex = new RegExp(`${cleanWord.replace(/[.*+?^${}()|[\]\\]/g, '\\// 將Strong's number添加到經文文本中
+                    const escapedWord = cleanWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const regex = new RegExp(`\\b${escapedWord}\\b`, 'i');
+modifiedText = modifiedText.replace(regex, `${cleanWord}${strongsSuperscript}`);
 function addStrongsToText(text, strongsNumbers) {
     if (!strongsNumbers || strongsNumbers.length === 0) {
         return text;
