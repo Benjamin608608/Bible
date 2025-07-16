@@ -200,13 +200,37 @@ async function getBibleVerse(bookCode, chapter, verse = null, version = 'unv') {
     }
 }
 
+// 解析Strong's number為lexiconId和id
+function parseStrongsForAPI(strongNumber) {
+    // 從 H09002 或 G976 格式中提取字母和數字
+    const match = strongNumber.match(/^([HG])0*(\d+)$/);
+    if (match) {
+        return {
+            lexiconId: match[1],  // H 或 G
+            id: parseInt(match[2])  // 數字部分，去掉前導零
+        };
+    }
+    return null;
+}
+
 // 從RapidAPI獲取Strong's資料
 async function getStrongsDataFromRapidAPI(strongNumber) {
     try {
         console.log('使用RapidAPI查詢Strong\'s資料:', strongNumber);
         
+        const parsed = parseStrongsForAPI(strongNumber);
+        if (!parsed) {
+            console.error('無法解析Strong\'s number格式:', strongNumber);
+            return null;
+        }
+        
+        console.log('解析後的參數:', parsed);
+        
         const response = await axios.get('https://iq-bible.p.rapidapi.com/GetStrongs', {
-            params: { strongNumber },
+            params: {
+                lexiconId: parsed.lexiconId,
+                id: parsed.id
+            },
             headers: {
                 'X-RapidAPI-Key': RAPIDAPI_KEY,
                 'X-RapidAPI-Host': 'iq-bible.p.rapidapi.com',
@@ -237,22 +261,36 @@ function formatStrongsMessage(strongNumber, data) {
         return message;
     }
     
-    // 根據RapidAPI的回應格式調整以下欄位
-    // 這裡需要根據實際的API回應格式進行調整
-    if (data.originalText) {
-        message += `**原文：** ${data.originalText}\n`;
+    // 根據你的測試結果調整欄位名稱
+    console.log('格式化Strong\'s資料:', JSON.stringify(data, null, 2));
+    
+    // 根據RapidAPI的實際回應格式調整這些欄位
+    if (data.word) {
+        message += `**原文：** ${data.word}\n`;
     }
     if (data.transliteration) {
         message += `**音譯：** ${data.transliteration}\n`;
     }
+    if (data.pronunciation) {
+        message += `**發音：** ${data.pronunciation}\n`;
+    }
     if (data.partOfSpeech) {
         message += `**詞性：** ${data.partOfSpeech}\n`;
     }
-    if (data.meaning) {
-        message += `**字義：** ${data.meaning}\n`;
+    if (data.shortDefinition) {
+        message += `**簡要定義：** ${data.shortDefinition}\n`;
     }
     if (data.definition) {
         message += `**定義：** ${data.definition}\n`;
+    }
+    if (data.etymology) {
+        message += `**字源：** ${data.etymology}\n`;
+    }
+    
+    // 如果沒有找到任何已知欄位，顯示原始資料以供調試
+    if (message === `📖 原文編號：**${strongNumber}**\n\n`) {
+        message += '**原始資料：**\n';
+        message += '```json\n' + JSON.stringify(data, null, 2) + '\n```';
     }
     
     return message;
