@@ -511,7 +511,7 @@ async function handleBibleQuery(message, reference) {
         
         console.log('解析結果:', parsed);
         
-        let chineseData = null;
+        let verseData = null;
         let originalData = null;
         let strongsNumbers = [];
         
@@ -519,12 +519,12 @@ async function handleBibleQuery(message, reference) {
             // 單節查詢
             console.log('開始查詢單節經文...');
             
-            // 1. 獲取中文經文
+            // 1. 獲取英文經文 (KJV)
             try {
-                chineseData = await getChineseVerse(parsed.book, parsed.chapter, parsed.verse);
-                console.log('成功獲取中文經文');
+                verseData = await getVerse(parsed.book, parsed.chapter, parsed.verse);
+                console.log('成功獲取英文經文');
             } catch (error) {
-                console.log('中文經文獲取失敗:', error.message);
+                console.log('英文經文獲取失敗:', error.message);
             }
             
             // 2. 獲取原文數據（用於Strong's編號）
@@ -558,30 +558,20 @@ async function handleBibleQuery(message, reference) {
             // 整章查詢
             console.log('開始查詢整章經文...');
             try {
-                chineseData = await getChineseChapter(parsed.book, parsed.chapter);
-                console.log('成功獲取中文整章');
+                verseData = await getChapter(parsed.book, parsed.chapter);
+                console.log('成功獲取英文整章');
             } catch (error) {
-                console.log('中文整章獲取失敗:', error.message);
+                console.log('英文整章獲取失敗:', error.message);
             }
         }
         
-        // 如果沒有中文數據，嘗試英文版本作為後備
-        if (!chineseData) {
-            console.log('使用英文版本作為後備');
-            if (parsed.verse) {
-                chineseData = await getVerse(parsed.book, parsed.chapter, parsed.verse);
-            } else {
-                chineseData = await getChapter(parsed.book, parsed.chapter);
-            }
-        }
-        
-        if (!chineseData || !chineseData.data) {
+        if (!verseData || !verseData.data) {
             await message.reply('❌ 找不到指定的經文，請檢查書卷名稱和章節是否正確。');
             return;
         }
         
-        // 解析中文經文
-        const formatted = parseVerseResponse(chineseData, parsed.bookName, parsed.chapter, parsed.verse);
+        // 解析英文經文
+        const formatted = parseVerseResponse(verseData, parsed.bookName, parsed.chapter, parsed.verse);
         
         if (!formatted || !formatted.record || formatted.record.length === 0) {
             await message.reply('❌ 經文解析失敗，請稍後再試。');
@@ -609,11 +599,8 @@ async function handleBibleQuery(message, reference) {
         }
         
         // 添加版本資訊
-        if (chineseData.version) {
-            responseText += `\n\n*版本: ${chineseData.version.toUpperCase()}*`;
-        } else {
-            responseText += '\n\n*版本: 中文和合本*';
-        }
+        responseText += '\n\n*版本: King James Version (KJV)*';
+        responseText += '\n*註：API暫不支援中文版本，提供英文版本 + 原文研讀功能*';
         
         // 確保訊息長度不超過Discord限制
         if (responseText.length > 1800) {
@@ -705,16 +692,20 @@ client.on('messageCreate', async (message) => {
 使用IQ Bible API提供專業的聖經原文研讀功能
 
 **支援格式：**
-• \`太1:1\` - 查詢單節（繁體中文和合本 + Strong's編號）
+• \`太1:1\` - 查詢單節（KJV英文版 + Strong's編號）
 • \`馬太福音1:1\` - 完整書名  
-• \`詩23\` - 查詢整章（繁體中文和合本）
+• \`詩23\` - 查詢整章（KJV英文版）
 • \`約3:16\` - 任何書卷
 
 **功能特色：**
-• 📜 **繁體中文和合本** - 主要顯示版本
+• 📜 **KJV英文版本** - 經典英文聖經
 • 🔤 **原文研讀** - 希伯來文/希臘文 Strong's 編號
 • 🎯 **互動查詢** - 點擊表情符號查看原文字義
 • 📚 **完整字典** - 包含發音、詞性、字義解釋
+
+**重要說明：**
+⚠️ API 目前不支援中文版本，提供 KJV 英文版本
+✅ 保留完整的 Strong's 原文研讀功能
 
 **其他指令：**
 • \`!books\` - 顯示書卷列表
