@@ -676,3 +676,4 @@ function parseIQBibleResponse(apiResponse, bookName, chapter, verse) {
         };
     }
 }
+client.login(DISCORD_TOKEN);
