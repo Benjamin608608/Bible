@@ -658,6 +658,7 @@ client.on('messageCreate', async (message) => {
 • \`!endpoints\` - 顯示可用API端點
 • \`!test\` - 測試機器人
 • \`!testapi\` - 測試API連接
+• \`!debug\` - 調試API參數
 • \`!random\` - 隨機經文
 • \`!help\` - 顯示此說明`);
             
@@ -668,6 +669,52 @@ client.on('messageCreate', async (message) => {
 **📜 舊約：** ${books.oldTestament}
 
 **✨ 新約：** ${books.newTestament}`);
+            
+        } else if (command === 'debug') {
+            try {
+                await message.reply('🔍 **調試 API 參數和回應...**');
+                
+                // 測試 GetBookIdByBookName
+                console.log('=== 調試 GetBookIdByBookName ===');
+                const testBooks = ['Genesis', 'Matthew', 'John'];
+                let debugInfo = '**書卷ID調試結果:**\n\n';
+                
+                for (const book of testBooks) {
+                    try {
+                        const bookId = await makeAPIRequest('GetBookIdByBookName', { bookName: book });
+                        debugInfo += `• ${book}: ${JSON.stringify(bookId)}\n`;
+                    } catch (error) {
+                        debugInfo += `• ${book}: 錯誤 - ${error.message}\n`;
+                    }
+                }
+                
+                await message.reply(debugInfo);
+                
+                // 測試 GetVerse 用不同參數
+                console.log('=== 調試 GetVerse ===');
+                const testVerseParams = [
+                    { verseId: '1001001' }, // Genesis 1:1 用標準ID
+                    { verseId: '40001001' }, // Matthew 1:1 用標準ID
+                    { verseId: '1001001', version: 'kjv' },
+                    { verseId: '1001001', version: 'KJV' }
+                ];
+                
+                let verseDebugInfo = '**GetVerse 調試結果:**\n\n';
+                
+                for (const params of testVerseParams) {
+                    try {
+                        const result = await makeAPIRequest('GetVerse', params);
+                        verseDebugInfo += `• 參數 ${JSON.stringify(params)}: ${typeof result} - ${JSON.stringify(result).slice(0, 100)}...\n\n`;
+                    } catch (error) {
+                        verseDebugInfo += `• 參數 ${JSON.stringify(params)}: 錯誤 - ${error.message}\n\n`;
+                    }
+                }
+                
+                await message.reply(verseDebugInfo);
+                
+            } catch (error) {
+                await message.reply(`❌ 調試失敗：${error.message}`);
+            }
             
         } else if (command === 'versions') {
             try {
@@ -793,7 +840,51 @@ client.on('messageCreate', async (message) => {
                 await message.reply(`❌ 取得隨機經文失敗：${error.message}`);
             }
             
-        } else if (command === 'apikey') {
+        } else if (command === 'debug') {
+            try {
+                await message.reply('🔍 **調試 API 參數和回應...**');
+                
+                // 測試 GetBookIdByBookName
+                console.log('=== 調試 GetBookIdByBookName ===');
+                const testBooks = ['Genesis', 'Matthew', 'John'];
+                let debugInfo = '**書卷ID調試結果:**\n\n';
+                
+                for (const book of testBooks) {
+                    try {
+                        const bookId = await makeAPIRequest('GetBookIdByBookName', { bookName: book });
+                        debugInfo += `• ${book}: ${JSON.stringify(bookId)}\n`;
+                    } catch (error) {
+                        debugInfo += `• ${book}: 錯誤 - ${error.message}\n`;
+                    }
+                }
+                
+                await message.reply(debugInfo);
+                
+                // 測試 GetVerse 用不同參數
+                console.log('=== 調試 GetVerse ===');
+                const testVerseParams = [
+                    { verseId: '1001001' }, // Genesis 1:1 用標準ID
+                    { verseId: '40001001' }, // Matthew 1:1 用標準ID
+                    { verseId: '1001001', version: 'kjv' },
+                    { verseId: '1001001', version: 'KJV' }
+                ];
+                
+                let verseDebugInfo = '**GetVerse 調試結果:**\n\n';
+                
+                for (const params of testVerseParams) {
+                    try {
+                        const result = await makeAPIRequest('GetVerse', params);
+                        verseDebugInfo += `• 參數 ${JSON.stringify(params)}: ${typeof result} - ${JSON.stringify(result).slice(0, 100)}...\n\n`;
+                    } catch (error) {
+                        verseDebugInfo += `• 參數 ${JSON.stringify(params)}: 錯誤 - ${error.message}\n\n`;
+                    }
+                }
+                
+                await message.reply(verseDebugInfo);
+                
+            } catch (error) {
+                await message.reply(`❌ 調試失敗：${error.message}`);
+            }
             await message.reply(`🔑 **API設置狀態**
 
 **IQ Bible API Key:** ${IQ_BIBLE_API_KEY ? '✅ 已設置' : '❌ 未設置'}
