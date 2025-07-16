@@ -674,43 +674,79 @@ client.on('messageCreate', async (message) => {
             try {
                 await message.reply('🔍 **調試 API 參數和回應...**');
                 
-                // 測試 GetBookIdByBookName
-                console.log('=== 調試 GetBookIdByBookName ===');
-                const testBooks = ['Genesis', 'Matthew', 'John'];
-                let debugInfo = '**書卷ID調試結果:**\n\n';
+                // 測試不同的書卷名稱格式
+                console.log('=== 調試書卷名稱格式 ===');
+                const testBookFormats = [
+                    'Genesis', 'genesis', 'GENESIS',
+                    'Matthew', 'matthew', 'MATTHEW',
+                    'John', 'john', 'JOHN',
+                    '1', '40', '43'  // 嘗試直接用數字
+                ];
                 
-                for (const book of testBooks) {
+                let bookDebugInfo = '**書卷名稱格式測試:**\n\n';
+                
+                for (const book of testBookFormats) {
                     try {
                         const bookId = await makeAPIRequest('GetBookIdByBookName', { bookName: book });
-                        debugInfo += `• ${book}: ${JSON.stringify(bookId)}\n`;
+                        bookDebugInfo += `• ${book}: ${JSON.stringify(bookId)}\n`;
                     } catch (error) {
-                        debugInfo += `• ${book}: 錯誤 - ${error.message}\n`;
+                        bookDebugInfo += `• ${book}: 錯誤 - ${error.message}\n`;
                     }
                 }
                 
-                await message.reply(debugInfo);
+                await message.reply(bookDebugInfo);
                 
-                // 測試 GetVerse 用不同參數
-                console.log('=== 調試 GetVerse ===');
-                const testVerseParams = [
-                    { verseId: '1001001' }, // Genesis 1:1 用標準ID
-                    { verseId: '40001001' }, // Matthew 1:1 用標準ID
-                    { verseId: '1001001', version: 'kjv' },
-                    { verseId: '1001001', version: 'KJV' }
+                // 測試不同的 verseId 格式
+                console.log('=== 調試 verseId 格式 ===');
+                const testVerseFormats = [
+                    { verseId: '01001001' },  // 8位格式
+                    { verseId: '1001001' },   // 7位格式
+                    { verseId: '1-1-1' },     // 破折號格式
+                    { verseId: '1.1.1' },     // 點號格式
+                    { verseId: 'Genesis.1.1' }, // 名稱格式
+                    { verseId: '40001001' },  // Matthew 1:1
+                    { verseId: '01001001', version: 'kjv' },
+                    { verseId: '01001001', versionId: 'kjv' }
                 ];
                 
-                let verseDebugInfo = '**GetVerse 調試結果:**\n\n';
+                let verseDebugInfo = '**verseId 格式測試:**\n\n';
                 
-                for (const params of testVerseParams) {
+                for (const params of testVerseFormats) {
                     try {
                         const result = await makeAPIRequest('GetVerse', params);
-                        verseDebugInfo += `• 參數 ${JSON.stringify(params)}: ${typeof result} - ${JSON.stringify(result).slice(0, 100)}...\n\n`;
+                        verseDebugInfo += `• ${JSON.stringify(params)}: ${typeof result} - ${JSON.stringify(result).slice(0, 50)}...\n\n`;
                     } catch (error) {
-                        verseDebugInfo += `• 參數 ${JSON.stringify(params)}: 錯誤 - ${error.message}\n\n`;
+                        verseDebugInfo += `• ${JSON.stringify(params)}: 錯誤 - ${error.message}\n\n`;
                     }
                 }
                 
                 await message.reply(verseDebugInfo);
+                
+                // 測試 GetChapter 的不同參數格式
+                console.log('=== 調試 GetChapter 格式 ===');
+                const testChapterFormats = [
+                    { chapterId: '01001' },
+                    { chapterId: '1001' },
+                    { chapterId: '001001' },
+                    { bookId: '01', chapterId: '01', versionId: 'kjv' },
+                    { bookId: '1', chapterId: '1', versionId: 'kjv' },
+                    { bookAndChapterId: '1.1' },
+                    { bookAndChapterId: '01.01' }
+                ];
+                
+                let chapterDebugInfo = '**GetChapter 格式測試:**\n\n';
+                
+                for (const params of testChapterFormats) {
+                    try {
+                        const endpoint = params.bookAndChapterId ? 'GetChapterByBookAndChapterId' : 'GetChapter';
+                        const result = await makeAPIRequest(endpoint, params);
+                        chapterDebugInfo += `• ${endpoint} ${JSON.stringify(params)}: ${typeof result} - 長度${Array.isArray(result) ? result.length : 'N/A'}\n\n`;
+                    } catch (error) {
+                        chapterDebugInfo += `• ${JSON.stringify(params)}: 錯誤 - ${error.message}\n\n`;
+                    }
+                }
+                
+                await message.reply(chapterDebugInfo);
                 
             } catch (error) {
                 await message.reply(`❌ 調試失敗：${error.message}`);
@@ -757,6 +793,52 @@ client.on('messageCreate', async (message) => {
                 await message.reply(`❌ 獲取版本列表失敗：${error.message}`);
             }
             
+        } else if (command === 'debug') {
+            try {
+                await message.reply('🔍 **調試 API 參數和回應...**');
+                
+                // 測試 GetBookIdByBookName
+                console.log('=== 調試 GetBookIdByBookName ===');
+                const testBooks = ['Genesis', 'Matthew', 'John'];
+                let debugInfo = '**書卷ID調試結果:**\n\n';
+                
+                for (const book of testBooks) {
+                    try {
+                        const bookId = await makeAPIRequest('GetBookIdByBookName', { bookName: book });
+                        debugInfo += `• ${book}: ${JSON.stringify(bookId)}\n`;
+                    } catch (error) {
+                        debugInfo += `• ${book}: 錯誤 - ${error.message}\n`;
+                    }
+                }
+                
+                await message.reply(debugInfo);
+                
+                // 測試 GetVerse 用不同參數
+                console.log('=== 調試 GetVerse ===');
+                const testVerseParams = [
+                    { verseId: '1001001' }, // Genesis 1:1 用標準ID
+                    { verseId: '40001001' }, // Matthew 1:1 用標準ID
+                    { verseId: '1001001', version: 'kjv' },
+                    { verseId: '1001001', version: 'KJV' }
+                ];
+                
+                let verseDebugInfo = '**GetVerse 調試結果:**\n\n';
+                
+                for (const params of testVerseParams) {
+                    try {
+                        const result = await makeAPIRequest('GetVerse', params);
+                        verseDebugInfo += `• 參數 ${JSON.stringify(params)}: ${typeof result} - ${JSON.stringify(result).slice(0, 100)}...\n\n`;
+                    } catch (error) {
+                        verseDebugInfo += `• 參數 ${JSON.stringify(params)}: 錯誤 - ${error.message}\n\n`;
+                    }
+                }
+                
+                await message.reply(verseDebugInfo);
+                
+            } catch (error) {
+                await message.reply(`❌ 調試失敗：${error.message}`);
+            }
+            
         } else if (command === 'endpoints') {
             const endpointList = `🔧 **IQ Bible API 可用端點：**
 
@@ -793,6 +875,9 @@ client.on('messageCreate', async (message) => {
             
         } else if (command === 'test') {
             await message.reply('✅ 聖經機器人正常運作中！\n使用IQ Bible API\n試試輸入：太1:1');
+            
+        } else if (command === 'ping') {
+            await message.reply('🏓 Pong! 機器人正在運行中...');
             
         } else if (command === 'testapi') {
             try {
