@@ -3,6 +3,7 @@ const axios = require('axios');
 
 // 環境變數設定
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || '9756948e1amsh82f1bcb3b5a1802p1628fajsneeb7e8e02c62';
 
 // 創建Discord客戶端
 const client = new Client({
@@ -199,52 +200,62 @@ async function getBibleVerse(bookCode, chapter, verse = null, version = 'unv') {
     }
 }
 
-// 獲取Strong's number詳細資料
-async function getStrongsData(strongNumber) {
+// 從RapidAPI獲取Strong's資料
+async function getStrongsDataFromRapidAPI(strongNumber) {
     try {
-        // 在查詢之前先標準化編號
-        const normalizedNumber = normalizeStrongsNumber(strongNumber);
+        console.log('使用RapidAPI查詢Strong\'s資料:', strongNumber);
         
-        const urls = [
-            {
-                url: 'https://bible.fhl.net/json/qb.php',
-                params: {
-                    strong: normalizedNumber,
-                    gb: 0
-                }
+        const response = await axios.get('https://iq-bible.p.rapidapi.com/GetStrongs', {
+            params: { strongNumber },
+            headers: {
+                'X-RapidAPI-Key': RAPIDAPI_KEY,
+                'X-RapidAPI-Host': 'iq-bible.p.rapidapi.com',
+                'Accept': 'application/json'
             },
-            {
-                url: 'https://bible.fhl.net/json/qb.php',
-                params: {
-                    sw: normalizedNumber,
-                    gb: 0
-                }
-            }
-        ];
+            timeout: 10000
+        });
         
-        for (const config of urls) {
-            console.log('嘗試獲取Strong\'s資料:', config.url, config.params);
-            
-            const response = await axios.get(config.url, { 
-                params: config.params,
-                timeout: 10000,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (compatible; Bible Discord Bot)'
-                }
-            });
-            
-            console.log('Strong\'s API回應:', JSON.stringify(response.data, null, 2));
-            
-            if (response.data && response.data.record && response.data.record.length > 0) {
-                return response.data;
-            }
-        }
+        console.log('RapidAPI Strong\'s回應:', JSON.stringify(response.data, null, 2));
         
-        return null;
+        return response.data;
     } catch (error) {
-        console.error('獲取Strong\'s資料時發生錯誤:', error.message);
+        console.error('從RapidAPI獲取Strong\'s資料時發生錯誤:', error.message);
+        if (error.response) {
+            console.error('錯誤回應狀態:', error.response.status);
+            console.error('錯誤回應資料:', error.response.data);
+        }
         throw error;
     }
+}
+
+// 格式化Strong's資料為訊息
+function formatStrongsMessage(strongNumber, data) {
+    let message = `📖 原文編號：**${strongNumber}**\n\n`;
+    
+    if (!data) {
+        message += '❌ 無法獲取詳細資料';
+        return message;
+    }
+    
+    // 根據RapidAPI的回應格式調整以下欄位
+    // 這裡需要根據實際的API回應格式進行調整
+    if (data.originalText) {
+        message += `**原文：** ${data.originalText}\n`;
+    }
+    if (data.transliteration) {
+        message += `**音譯：** ${data.transliteration}\n`;
+    }
+    if (data.partOfSpeech) {
+        message += `**詞性：** ${data.partOfSpeech}\n`;
+    }
+    if (data.meaning) {
+        message += `**字義：** ${data.meaning}\n`;
+    }
+    if (data.definition) {
+        message += `**定義：** ${data.definition}\n`;
+    }
+    
+    return message;
 }
 
 // 解析Strong's number並添加編號
@@ -545,8 +556,21 @@ client.on('messageReactionAdd', async (reaction, user) => {
         const selectedStrong = strongs.find(s => s.emoji === emoji);
         
         if (selectedStrong) {
-            // 直接回應編號，不查詢詳細資料
-            await reaction.message.reply(`📖 原文編號：**${selectedStrong.number}**`);
+            try {
+                console.log('查詢Strong\'s number:', selectedStrong.number);
+                
+                // 從RapidAPI獲取Strong's資料
+                const strongsData = await getStrongsDataFromRapidAPI(selectedStrong.number);
+                
+                // 格式化並發送訊息
+                const formattedMessage = formatStrongsMessage(selectedStrong.number, strongsData);
+                await reaction.message.reply(formattedMessage);
+                
+            } catch (error) {
+                console.error('獲取Strong\'s資料時發生錯誤:', error);
+                // 如果API失敗，至少顯示編號
+                await reaction.message.reply(`📖 原文編號：**${selectedStrong.number}**\n\n❌ 無法獲取詳細資料，請稍後再試`);
+            }
         }
     }
 });
