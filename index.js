@@ -218,7 +218,7 @@ async function getChineseVerse(bookName, chapter, verse) {
                     version: version
                 });
                 
-                if (data && data !== false && (typeof data === 'string' || (Array.isArray(data) && data.length > 0))) {
+                if (data && data !== false && data !== null && (typeof data === 'string' || (Array.isArray(data) && data.length > 0) || (typeof data === 'object' && Object.keys(data).length > 0))) {
                     console.log(`成功獲取中文版本: ${version}`);
                     return {
                         data: data,
@@ -236,11 +236,15 @@ async function getChineseVerse(bookName, chapter, verse) {
         console.log('嘗試不帶版本參數的中文查詢');
         const data = await makeAPIRequest('GetVerse', { verseId: verseId });
         
-        return {
-            data: data,
-            endpoint: 'GetVerse',
-            verseId: verseId
-        };
+        if (data && data !== false && data !== null && (typeof data === 'string' || (Array.isArray(data) && data.length > 0) || (typeof data === 'object' && Object.keys(data).length > 0))) {
+            return {
+                data: data,
+                endpoint: 'GetVerse',
+                verseId: verseId
+            };
+        } else {
+            throw new Error('所有中文版本查詢都返回無效數據');
+        }
     } catch (error) {
         console.error('獲取中文經文失敗:', error.message);
         throw error;
@@ -941,7 +945,50 @@ client.on('messageCreate', async (message) => {
                 await message.reply(`❌ 取得隨機經文失敗：${error.message}`);
             }
             
-        } else if (command === 'apikey') {
+        } else if (command === 'testchinese') {
+            try {
+                await message.reply('🔍 **測試中文版本查詢...**');
+                
+                // 測試所有可能的中文版本名稱
+                const chineseVersions = [
+                    'cuv', 'cuvs', 'cuvt', 'chinese', 'cht', 'chs',
+                    'chinese_union', 'chinese_traditional', 'chinese_simplified',
+                    'union', 'cun', 'cnv', 'ccb', 'cbb', 'csb',
+                    'zh', 'zh-tw', 'zh-cn', 'chinese_union_version'
+                ];
+                
+                let testResult = '**中文版本測試結果:**\n\n';
+                
+                for (const version of chineseVersions) {
+                    try {
+                        const result = await makeAPIRequest('GetVerse', { 
+                            verseId: '01001001',
+                            version: version
+                        });
+                        
+                        if (result && result !== false && result !== null) {
+                            testResult += `✅ **${version}**: 成功 - ${JSON.stringify(result).slice(0, 100)}...\n\n`;
+                        } else {
+                            testResult += `❌ **${version}**: 返回 ${result}\n\n`;
+                        }
+                    } catch (error) {
+                        testResult += `❌ **${version}**: 錯誤 - ${error.message}\n\n`;
+                    }
+                    
+                    // 分批發送避免過長
+                    if (testResult.length > 1500) {
+                        await message.reply(testResult);
+                        testResult = '';
+                    }
+                }
+                
+                if (testResult) {
+                    await message.reply(testResult);
+                }
+                
+            } catch (error) {
+                await message.reply(`❌ 測試失敗：${error.message}`);
+            }
             await message.reply(`🔑 **API設置狀態**
 
 **IQ Bible API Key:** ${IQ_BIBLE_API_KEY ? '✅ 已設置' : '❌ 未設置'}
