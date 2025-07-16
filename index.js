@@ -170,30 +170,30 @@ async function getBookId(bookName) {
         return bookId;
     } catch (error) {
         console.log('獲取書卷ID失敗，使用預設值');
-        // 使用標準的書卷ID作為後備
+        // 使用標準的書卷ID作為後備（2位數字格式）
         const bookIds = {
-            // 舊約 (1-39)
-            'Genesis': 1, 'Exodus': 2, 'Leviticus': 3, 'Numbers': 4, 'Deuteronomy': 5,
-            'Joshua': 6, 'Judges': 7, 'Ruth': 8, '1Samuel': 9, '2Samuel': 10,
-            '1Kings': 11, '2Kings': 12, '1Chronicles': 13, '2Chronicles': 14, 'Ezra': 15,
-            'Nehemiah': 16, 'Esther': 17, 'Job': 18, 'Psalms': 19, 'Proverbs': 20,
-            'Ecclesiastes': 21, 'SongofSongs': 22, 'Isaiah': 23, 'Jeremiah': 24, 'Lamentations': 25,
-            'Ezekiel': 26, 'Daniel': 27, 'Hosea': 28, 'Joel': 29, 'Amos': 30,
-            'Obadiah': 31, 'Jonah': 32, 'Micah': 33, 'Nahum': 34, 'Habakkuk': 35,
-            'Zephaniah': 36, 'Haggai': 37, 'Zechariah': 38, 'Malachi': 39,
+            // 舊約 (01-39)
+            'Genesis': '01', 'Exodus': '02', 'Leviticus': '03', 'Numbers': '04', 'Deuteronomy': '05',
+            'Joshua': '06', 'Judges': '07', 'Ruth': '08', '1Samuel': '09', '2Samuel': '10',
+            '1Kings': '11', '2Kings': '12', '1Chronicles': '13', '2Chronicles': '14', 'Ezra': '15',
+            'Nehemiah': '16', 'Esther': '17', 'Job': '18', 'Psalms': '19', 'Proverbs': '20',
+            'Ecclesiastes': '21', 'SongofSongs': '22', 'Isaiah': '23', 'Jeremiah': '24', 'Lamentations': '25',
+            'Ezekiel': '26', 'Daniel': '27', 'Hosea': '28', 'Joel': '29', 'Amos': '30',
+            'Obadiah': '31', 'Jonah': '32', 'Micah': '33', 'Nahum': '34', 'Habakkuk': '35',
+            'Zephaniah': '36', 'Haggai': '37', 'Zechariah': '38', 'Malachi': '39',
             
             // 新約 (40-66)
-            'Matthew': 40, 'Mark': 41, 'Luke': 42, 'John': 43, 'Acts': 44,
-            'Romans': 45, '1Corinthians': 46, '2Corinthians': 47, 'Galatians': 48, 'Ephesians': 49,
-            'Philippians': 50, 'Colossians': 51, '1Thessalonians': 52, '2Thessalonians': 53, '1Timothy': 54,
-            '2Timothy': 55, 'Titus': 56, 'Philemon': 57, 'Hebrews': 58, 'James': 59,
-            '1Peter': 60, '2Peter': 61, '1John': 62, '2John': 63, '3John': 64,
-            'Jude': 65, 'Revelation': 66
+            'Matthew': '40', 'Mark': '41', 'Luke': '42', 'John': '43', 'Acts': '44',
+            'Romans': '45', '1Corinthians': '46', '2Corinthians': '47', 'Galatians': '48', 'Ephesians': '49',
+            'Philippians': '50', 'Colossians': '51', '1Thessalonians': '52', '2Thessalonians': '53', '1Timothy': '54',
+            '2Timothy': '55', 'Titus': '56', 'Philemon': '57', 'Hebrews': '58', 'James': '59',
+            '1Peter': '60', '2Peter': '61', '1John': '62', '2John': '63', '3John': '64',
+            'Jude': '65', 'Revelation': '66'
         };
         
         const defaultId = bookIds[bookName];
         console.log(`使用預設書卷ID: ${bookName} = ${defaultId}`);
-        return defaultId || 1;
+        return defaultId || '01';
     }
 }
 
@@ -205,42 +205,16 @@ async function getVerse(bookName, chapter, verse, version = 'kjv') {
         const bookId = await getBookId(bookName);
         
         // 檢查 bookId 是否有效
-        if (!bookId || bookId <= 0) {
+        if (!bookId) {
             throw new Error(`無效的書卷ID: ${bookId}`);
         }
         
-        // 構建 verseId (格式：bookId + chapter(3位) + verse(3位))
+        // 構建 verseId (格式：bookId(2位) + chapter(3位) + verse(3位))
         const verseId = `${bookId}${String(chapter).padStart(3, '0')}${String(verse).padStart(3, '0')}`;
         
         console.log('構建的 verseId:', verseId);
         
-        // 嘗試多個版本參數格式
-        const versionFormats = [version, version.toUpperCase(), version.toLowerCase()];
-        
-        for (const versionFormat of versionFormats) {
-            try {
-                console.log(`嘗試版本格式: ${versionFormat}`);
-                const data = await makeAPIRequest('GetVerse', { 
-                    verseId: verseId,
-                    version: versionFormat 
-                });
-                
-                // 檢查回應是否有效
-                if (data && (typeof data === 'string' || (Array.isArray(data) && data.length > 0) || (typeof data === 'object' && Object.keys(data).length > 0))) {
-                    return {
-                        data: data,
-                        endpoint: 'GetVerse',
-                        verseId: verseId,
-                        version: versionFormat
-                    };
-                }
-            } catch (versionError) {
-                console.log(`版本 ${versionFormat} 失敗:`, versionError.message);
-            }
-        }
-        
-        // 如果所有版本都失敗，嘗試不帶版本參數
-        console.log('嘗試不帶版本參數');
+        // 嘗試不帶版本參數（調試顯示這樣可能更有效）
         const data = await makeAPIRequest('GetVerse', { verseId: verseId });
         
         return {
@@ -261,39 +235,17 @@ async function getChapter(bookName, chapter, version = 'kjv') {
         
         const bookId = await getBookId(bookName);
         
-        // 方法1：使用 GetChapter
-        try {
-            const chapterId = `${bookId}${String(chapter).padStart(3, '0')}`;
-            console.log('構建的 chapterId:', chapterId);
-            
-            const data = await makeAPIRequest('GetChapter', { 
-                chapterId: chapterId,
-                version: version 
-            });
-            
-            return {
-                data: data,
-                endpoint: 'GetChapter',
-                chapterId: chapterId
-            };
-        } catch (error) {
-            console.log('GetChapter 失敗，嘗試 GetChapterByBookAndChapterId');
-            
-            // 方法2：使用 GetChapterByBookAndChapterId
-            const bookAndChapterId = `${bookId}.${chapter}`;
-            console.log('構建的 bookAndChapterId:', bookAndChapterId);
-            
-            const data = await makeAPIRequest('GetChapterByBookAndChapterId', { 
-                bookAndChapterId: bookAndChapterId,
-                version: version 
-            });
-            
-            return {
-                data: data,
-                endpoint: 'GetChapterByBookAndChapterId',
-                bookAndChapterId: bookAndChapterId
-            };
-        }
+        // 構建 chapterId (格式：bookId(2位) + chapter(3位))
+        const chapterId = `${bookId}${String(chapter).padStart(3, '0')}`;
+        console.log('構建的 chapterId:', chapterId);
+        
+        const data = await makeAPIRequest('GetChapter', { chapterId: chapterId });
+        
+        return {
+            data: data,
+            endpoint: 'GetChapter',
+            chapterId: chapterId
+        };
     } catch (error) {
         console.error('獲取章節失敗:', error.message);
         throw error;
@@ -308,7 +260,7 @@ async function getOriginalText(bookName, chapter, verse) {
         const bookId = await getBookId(bookName);
         
         // 檢查 bookId 是否有效
-        if (!bookId || bookId <= 0) {
+        if (!bookId) {
             throw new Error(`無效的書卷ID: ${bookId}`);
         }
         
