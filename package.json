@@ -1,28 +1,30 @@
 {
-  "name": "theologian",
+  "name": "bible-discord-bot",
   "version": "1.0.0",
-  "description": "Discord bot that answers Bible questions using OpenAI API and vector database",
+  "description": "Discord聖經機器人 - 查詢聖經經文",
   "main": "index.js",
-  "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "node index.js"
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": "18.x"
   },
   "keywords": [
     "discord",
     "bot",
     "bible",
-    "openai",
-    "christianity"
+    "christian",
+    "scripture"
   ],
-  "author": "Your Name",
-  "license": "MIT",
-  "dependencies": {
-    "discord.js": "^14.14.1",
-    "openai": "^4.24.7",
-    "dotenv": "^16.3.1"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+  "author": "你的名字",
+  "license": "MIT"
 }
